@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.expo/
+
+# Python Cache & Environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ML/CV tracking
+mlruns/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# System and IDE configuration files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Project Plan (Specifically requested by user to be ignored)
+fashion_app_project_plan.md
