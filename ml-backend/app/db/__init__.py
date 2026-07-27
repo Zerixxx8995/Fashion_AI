@@ -1,2 +1,5 @@
-﻿# Placeholder for ml-backend/app/db/__init__.py
+"""DB package — re-export engine, session, and Base for convenience."""
 
+from app.db.database import Base, SessionLocal, engine, get_db
+
+__all__ = ["Base", "SessionLocal", "engine", "get_db"]
