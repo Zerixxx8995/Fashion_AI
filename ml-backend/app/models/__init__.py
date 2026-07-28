@@ -1,2 +1,11 @@
-﻿# Placeholder for ml-backend/app/models/__init__.py
+from app.models.cv_models import (
+    CVScoreRequest,
+    SimilarProductsRequest,
+    FakeReviewCheckRequest,
+)
 
+__all__ = [
+    "CVScoreRequest",
+    "SimilarProductsRequest",
+    "FakeReviewCheckRequest",
+]

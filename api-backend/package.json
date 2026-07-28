@@ -7,10 +7,14 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "jest --runInBand --forceExit",
-    "test:models": "jest tests/models --runInBand --forceExit"
+    "test:models": "jest tests/models --runInBand --forceExit",
+    "test:validators": "jest tests/validators.test.js --runInBand --forceExit"
   },
   "jest": {
-    "testMatch": ["**/tests/models/**/*.test.js"]
+    "testMatch": [
+      "**/tests/models/**/*.test.js",
+      "**/tests/validators.test.js"
+    ]
   },
   "dependencies": {
     "sequelize": "^6.37.5",
