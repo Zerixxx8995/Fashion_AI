@@ -13,22 +13,17 @@ Endpoints:
   POST   /cv/score                        Submit image for confidence scoring
   GET    /cv/score/{job_id}/status        Poll job status
   GET    /cv/score/{job_id}/result        Retrieve completed result
-
-Design note on job_id vs celery_task_id:
-  The API exposes a friendly "job_id" concept (a UUID we generate) but the
-  submit endpoint also returns celery_task_id (the internal Celery task ID).
-  Status + result endpoints accept celery_task_id for simplicity —
-  in Step 8 a mapping table can be added if needed.
+  POST   /cv/similar                      Find visually similar cheaper products
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Any, List
+from typing import Annotated, Any, List, Optional
 
-from fastapi import APIRouter, Form, Query, UploadFile, File, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Form, status
 
 from app.controllers import cv_controller
+from app.models.cv_models import SimilarProductsRequest
 
 router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
@@ -52,16 +47,8 @@ async def submit_cv_score(
     """
     Submit a user-uploaded product photo for CV confidence scoring.
 
-    This endpoint is **non-blocking** — it enqueues a Celery job and returns
-    a `job_id` immediately (HTTP 202 Accepted). The client polls
-    `/cv/score/{job_id}/status` until status is `complete`, then retrieves
-    the full result from `/cv/score/{job_id}/result`.
-
-    **Form fields:**
-    - `product_id` — UUID of the product being evaluated
-    - `user_id` — UUID of the requesting user
-    - `uploaded_image_url` — Backblaze B2 URL of the user-uploaded photo
-    - `stock_image_urls` — one or more stock image URLs from the listing
+    Non-blocking — enqueues a Celery job and returns job_id immediately (HTTP 202).
+    Client polls `/cv/score/{job_id}/status` until complete, then calls `/result`.
     """
     return await cv_controller.handle_submit_score(
         product_id=product_id,
@@ -85,13 +72,8 @@ def get_cv_score_status(job_id: str) -> dict[str, str]:
     """
     Poll the status of a CV scoring job.
 
-    `job_id` here is the `celery_task_id` returned by the submit endpoint.
-
-    **Status values:**
-    - `pending` — job is queued, not yet picked up by a worker
-    - `running` — worker is actively processing
-    - `complete` — result is ready; call `/result`
-    - `failed` — the job failed; check worker logs
+    `job_id` = `celery_task_id` returned by the submit endpoint.
+    Status: pending | running | complete | failed
     """
     return cv_controller.handle_get_status(job_id)
 
@@ -110,16 +92,27 @@ def get_cv_score_result(job_id: str) -> dict[str, Any]:
     """
     Retrieve the full confidence score result for a completed job.
 
-    `job_id` here is the `celery_task_id` returned by the submit endpoint.
-
-    **Returns 409** if the job is not yet complete — poll `/status` first.
-    **Returns 500** if the job failed.
-
-    **Result fields:**
-    - `stock_match_score` — cosine similarity vs primary stock image [0–1]
-    - `authenticity_score` — weighted aggregate across all stock images [0–1]
-    - `overall_confidence` — blended final score [0–1]
-    - `label` — `high` | `moderate` | `low`
-    - `num_stock_images_used` — number of stock images compared
+    Returns 409 if not yet complete. Returns 500 if job failed.
     """
     return cv_controller.handle_get_result(job_id)
+
+
+# ---------------------------------------------------------------------------
+# POST /cv/similar
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/similar",
+    status_code=status.HTTP_200_OK,
+    summary="Find visually similar cheaper products",
+    response_description="Ranked list of similar products sorted by similarity score",
+)
+def find_similar_products(body: SimilarProductsRequest) -> dict[str, Any]:
+    """
+    Find visually similar products via CLIP embeddings + Pinecone search.
+
+    Accepts `image_url` (takes precedence) or `text_query`.
+    Results ranked by cosine similarity (highest first).
+    Set `max_price_inr` to filter for cheaper alternatives only.
+    """
+    return cv_controller.handle_find_similar(body=body)

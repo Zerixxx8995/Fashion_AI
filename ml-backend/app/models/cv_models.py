@@ -46,6 +46,15 @@ class SimilarProductsRequest(BaseModel):
     image_url: Optional[str] = Field(None, description="HTTP/HTTPS URL of query image")
     text_query: Optional[str] = Field(None, description="Natural language search query")
     limit: int = Field(10, ge=1, le=50, description="Max number of results to return")
+    max_price_inr: Optional[int] = Field(
+        None, ge=1, description="Optional upper price limit (inclusive, in INR)"
+    )
+    category: Optional[str] = Field(
+        None, description="Optional category filter (e.g. 'tops', 'jeans')"
+    )
+    exclude_platform: Optional[str] = Field(
+        None, description="Optional platform to exclude from results"
+    )
 
     @field_validator("image_url")
     @classmethod
