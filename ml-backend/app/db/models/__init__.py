@@ -13,6 +13,7 @@ from app.db.models.product import Product
 from app.db.models.review import Review
 from app.db.models.user import User
 from app.db.models.wardrobe_item import WardrobeItem
+from app.db.models.trend_item import TrendItem
 
 __all__ = [
     "Alert",
@@ -21,4 +22,5 @@ __all__ = [
     "Review",
     "User",
     "WardrobeItem",
+    "TrendItem",
 ]
