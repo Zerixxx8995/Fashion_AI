@@ -11,18 +11,14 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Validate POST /auth/sync request body
+ * Validate POST /auth/sync request body.
+ *
+ * Note: clerk_id is extracted from the Clerk JWT (req.auth.sub) by the
+ * controller — it is NOT required in the request body. Only email (required)
+ * and name (optional) are validated here.
  */
 function validateUserSync(req, res, next) {
-  const { clerk_id, email, name } = req.body;
-
-  if (!clerk_id || typeof clerk_id !== 'string' || clerk_id.trim() === '') {
-    return res.status(422).json({
-      error: 'Validation Error',
-      detail: 'clerk_id must be a non-empty string.',
-      status_code: 422,
-    });
-  }
+  const { email, name } = req.body;
 
   if (!email || !EMAIL_REGEX.test(email)) {
     return res.status(422).json({
@@ -42,6 +38,7 @@ function validateUserSync(req, res, next) {
 
   next();
 }
+
 
 /**
  * Validate PUT /users/:id/profile request body and params
