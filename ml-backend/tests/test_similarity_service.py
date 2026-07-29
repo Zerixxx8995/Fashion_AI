@@ -26,6 +26,9 @@ Requirements tested (from build order Step 8):
 
 from __future__ import annotations
 
+import os
+os.environ["TESTING"] = "1"
+
 import sys
 import uuid
 from typing import Any

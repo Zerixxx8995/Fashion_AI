@@ -24,6 +24,31 @@ const errorHandler = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
+const sequelize = require('./db/connection');
+
+/**
+ * Execute query to check database size and log a warning if it exceeds 400MB.
+ */
+async function checkDatabaseSize() {
+  if (process.env.TESTING === '1' || sequelize.options.dialect !== 'postgres') {
+    return;
+  }
+  try {
+    const databaseName = sequelize.config.database;
+    const [results] = await sequelize.query(`SELECT pg_database_size('${databaseName}') AS size_bytes;`);
+    if (results && results.length > 0) {
+      const sizeBytes = parseInt(results[0].size_bytes, 10);
+      const sizeMB = sizeBytes / (1024 * 1024);
+      if (sizeMB > 400) {
+        console.warn(`[database_check] WARNING: Neon PostgreSQL database size is high! Current size: ${sizeMB.toFixed(2)} MB (Limit: 500 MB)`);
+      } else {
+        console.log(`[database_check] Database size check: ${sizeMB.toFixed(2)} MB`);
+      }
+    }
+  } catch (err) {
+    console.error(`[database_check] Failed to check database size: ${err.message}`);
+  }
+}
 
 function createApp() {
   const app = express();
@@ -52,7 +77,23 @@ function createApp() {
   // 7. Error handler — must be last
   app.use(errorHandler);
 
+  // Run DB size check asynchronously
+  checkDatabaseSize();
+
   return app;
+}
+
+// Start server if run directly
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  const app = createApp();
+  sequelize.sync().then(() => {
+    app.listen(PORT, () => {
+      console.log(`[server] Server listening on port ${PORT}`);
+    });
+  }).catch((err) => {
+    console.error('[server] Failed to sync database on startup:', err);
+  });
 }
 
 module.exports = createApp;

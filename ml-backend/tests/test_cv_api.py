@@ -22,6 +22,9 @@ Test groups:
 
 from __future__ import annotations
 
+import os
+os.environ["TESTING"] = "1"
+
 import uuid
 from unittest.mock import patch, MagicMock
 from typing import Any

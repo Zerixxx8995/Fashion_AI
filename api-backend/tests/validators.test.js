@@ -29,7 +29,6 @@ describe('User Validator Middleware', () => {
     test('passes valid input', () => {
       const req = {
         body: {
-          clerk_id: 'user_2bd1bcc8',
           email: 'test@example.com',
           name: 'John Doe',
         },
@@ -42,29 +41,9 @@ describe('User Validator Middleware', () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    test('rejects empty clerk_id', () => {
-      const req = {
-        body: {
-          clerk_id: '',
-          email: 'test@example.com',
-        },
-      };
-      const res = mockRes();
-      const next = mockNext();
-
-      validateUserSync(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        error: 'Validation Error',
-        detail: expect.stringContaining('clerk_id'),
-      }));
-      expect(next).not.toHaveBeenCalled();
-    });
-
     test('rejects invalid email', () => {
       const req = {
         body: {
-          clerk_id: 'user_2bd1bcc8',
           email: 'bad-email-format',
         },
       };

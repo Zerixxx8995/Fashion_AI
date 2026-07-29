@@ -77,6 +77,25 @@ def _get_index() -> Any:
     return _pinecone_index
 
 
+def _check_capacity(index: Any) -> None:
+    """
+    Check current capacity of the Pinecone index via describe_index_stats().
+    Logs a high-priority warning if index fullness > 0.8 or total vectors > 80,000.
+    """
+    try:
+        stats = index.describe_index_stats()
+        index_fullness = stats.get("index_fullness", 0.0)
+        total_vector_count = stats.get("total_vector_count", 0)
+        if index_fullness > 0.8 or total_vector_count > 80000:
+            logger.warning(
+                "[pinecone_client] HIGH CAPACITY WARNING: Pinecone index is near limits! "
+                "Fullness: %.2f%%, Total vectors: %d",
+                index_fullness * 100, total_vector_count
+            )
+    except Exception as exc:
+        logger.error("[pinecone_client] Capacity check failed: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -99,6 +118,7 @@ def upsert_embedding(
         namespace:  Pinecone namespace ("products" or "wardrobe").
     """
     index = _get_index()
+    _check_capacity(index)
     index.upsert(
         vectors=[{"id": vector_id, "values": embedding, "metadata": metadata}],
         namespace=namespace,
@@ -142,6 +162,7 @@ def query_similar(
         ]
     """
     index = _get_index()
+    _check_capacity(index)
     response = index.query(
         vector=embedding,
         top_k=top_k,
