@@ -24,6 +24,8 @@ const errorHandler = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
+const alertRoutes = require('./routes/alertRoutes');
+const internalAlertRoutes = require('./routes/internalAlertRoutes');
 const sequelize = require('./db/connection');
 
 /**
@@ -73,6 +75,8 @@ function createApp() {
   // 6. API routes
   app.use('/auth', authRoutes);
   app.use('/users', userRoutes);
+  app.use('/alerts', alertRoutes);
+  app.use('/internal', internalAlertRoutes);
 
   // 7. Error handler — must be last
   app.use(errorHandler);
