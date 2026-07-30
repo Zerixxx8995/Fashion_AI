@@ -68,7 +68,7 @@ def _notify_node_price_check(current_prices: dict[str, int]) -> dict[str, Any]:
     POST current product prices to the Node.js backend for alert evaluation.
     Node.js will compare against active alert thresholds and emit Socket.io events.
     """
-    url = f"{NODE_BACKEND_URL}/internal/alerts/check-prices"
+    url = f"{NODE_BACKEND_URL}/internal/check-prices"
     try:
         response = requests.post(
             url,
@@ -87,7 +87,7 @@ def _notify_node_restock(restocked_ids: list[str]) -> dict[str, Any]:
     """
     POST a list of restocked product IDs to the Node.js backend.
     """
-    url = f"{NODE_BACKEND_URL}/internal/alerts/check-restock"
+    url = f"{NODE_BACKEND_URL}/internal/check-restock"
     try:
         response = requests.post(
             url,

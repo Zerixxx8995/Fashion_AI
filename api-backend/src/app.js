@@ -90,11 +90,14 @@ function createApp() {
 // Start server if run directly
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
+  const { initSocket } = require('./integrations/socketManager');
   const app = createApp();
   sequelize.sync().then(() => {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`[server] Server listening on port ${PORT}`);
     });
+    // Attach Socket.io to the running HTTP server so WebSocket connections work
+    initSocket(server);
   }).catch((err) => {
     console.error('[server] Failed to sync database on startup:', err);
   });

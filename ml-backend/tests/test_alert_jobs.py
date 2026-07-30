@@ -116,7 +116,7 @@ def test_check_price_alerts_calls_node_with_prices(mock_post, setup_db):
     # Verify requests.post payload and headers
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
-    assert args[0].endswith("/internal/alerts/check-prices")
+    assert args[0].endswith("/internal/check-prices")
     assert kwargs["headers"]["X-Internal-Secret"] == "dev-internal-secret"
     assert kwargs["json"]["prices"] == {
         "22222222-2222-2222-2222-222222222222": 1500,
@@ -149,6 +149,6 @@ def test_check_restock_alerts(mock_post):
     
     mock_post.assert_called_once()
     args, kwargs = mock_post.call_args
-    assert args[0].endswith("/internal/alerts/check-restock")
+    assert args[0].endswith("/internal/check-restock")
     assert kwargs["headers"]["X-Internal-Secret"] == "dev-internal-secret"
     assert kwargs["json"]["restocked_product_ids"] == restocked_ids
