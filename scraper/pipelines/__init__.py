@@ -1,2 +1,1 @@
-﻿# Placeholder for scraper/pipelines/__init__.py
-
+# Scrapy pipelines package for Fashion AI scraper.

@@ -1,2 +1,1 @@
-﻿# Placeholder for scraper/spiders/__init__.py
-
+# Scrapy spiders package for Fashion AI scraper.
