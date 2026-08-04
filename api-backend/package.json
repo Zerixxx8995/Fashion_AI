@@ -15,7 +15,8 @@
       "**/tests/models/**/*.test.js",
       "**/tests/validators.test.js",
       "**/tests/auth.test.js",
-      "**/tests/alerts.test.js"
+      "**/tests/alerts.test.js",
+      "**/tests/wardrobe.test.js"
     ]
   },
   "dependencies": {
