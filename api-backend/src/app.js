@@ -26,6 +26,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const alertRoutes = require('./routes/alertRoutes');
 const internalAlertRoutes = require('./routes/internalAlertRoutes');
+const wardrobeRoutes = require('./routes/wardrobeRoutes');
 const sequelize = require('./db/connection');
 
 /**
@@ -77,6 +78,7 @@ function createApp() {
   app.use('/users', userRoutes);
   app.use('/alerts', alertRoutes);
   app.use('/internal', internalAlertRoutes);
+  app.use('/wardrobe', wardrobeRoutes);
 
   // 7. Error handler — must be last
   app.use(errorHandler);
