@@ -1,2 +1,1 @@
-﻿# Placeholder for scraper/middlewares/__init__.py
-
+# Scrapy middlewares package for Fashion AI scraper.
