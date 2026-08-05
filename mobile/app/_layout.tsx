@@ -1,8 +1,17 @@
+/**
+ * Root Layout — mobile/app/_layout.tsx
+ *
+ * Responsibility: Mount ClerkProvider and manage root-level routing.
+ * Checks authentication status and redirects to sign-in or tabs.
+ *
+ * Uses @clerk/expo v3 tokenCache from the official package (not expo-secure-store directly).
+ */
+
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 import { ActivityIndicator, View } from 'react-native';
-import { tokenCache } from '../utils/tokenCache';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 

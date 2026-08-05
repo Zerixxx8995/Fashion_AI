@@ -1,2 +1,29 @@
-﻿{}
-
+{
+  "expo": {
+    "name": "ZEST",
+    "slug": "zest-fashion-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0B0E"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.zest.fashionai"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0B0E"
+      },
+      "package": "com.zest.fashionai"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "@clerk/expo"
+    ],
+    "scheme": "zest"
+  }
+}

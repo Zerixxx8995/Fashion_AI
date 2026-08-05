@@ -1,8 +1,17 @@
 /**
  * Sign Up Screen — mobile/app/(auth)/sign-up.tsx
  *
- * Responsibility: Render Sign-up form, execute sign-up, and verification via Clerk.
- * Syncs the newly created user profile with the postgres backend.
+ * Responsibility: Email + password sign-up using @clerk/expo v4 JS-Only flow.
+ * Compatible with Expo Go (no dev build required).
+ *
+ * API pattern (v4):
+ *   const { signUp } = useSignUp();
+ *   const { error } = await signUp.password({ emailAddress, password });
+ *   const { error } = await signUp.verifications.sendEmailCode();
+ *   const { error } = await signUp.verifications.verifyEmailCode({ code });
+ *   const { error } = await signUp.finalize();
+ *
+ * After finalize(), useAuth() automatically updates with the signed-in state.
  */
 
 import React, { useState } from 'react';
@@ -17,13 +26,14 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useSignUp } from '@clerk/clerk-expo';
+import { useAuth, useSignUp } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { useHttpClients } from '../../services/httpClient';
 import { useAuthStore } from '../../store/authStore';
 
 export default function SignUpScreen() {
-  const { signUp, setActive, isLoaded } = useSignUp();
+  const { signUp } = useSignUp();
+  const { isLoaded } = useAuth();
   const { getClients } = useHttpClients();
   const syncUserWithBackend = useAuthStore((state) => state.syncUserWithBackend);
   const router = useRouter();
@@ -37,7 +47,7 @@ export default function SignUpScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSignUp = async () => {
-    if (!isLoaded) return;
+    if (!isLoaded || !signUp) return;
     if (!name || !email || !password) {
       setErrorMsg('Please fill in all fields.');
       return;
@@ -47,25 +57,34 @@ export default function SignUpScreen() {
     setErrorMsg(null);
 
     try {
-      // 1. Create Clerk user sign-up record
-      await signUp.create({
-        firstName: name,
+      // Step 1: Create sign-up session with password strategy
+      const { error: signUpError } = await signUp.password({
         emailAddress: email,
         password,
+        firstName: name,
       });
+      if (signUpError) {
+        setErrorMsg(signUpError.message ?? 'Registration failed.');
+        return;
+      }
 
-      // 2. Send email verification code
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      // Step 2: Send email verification code
+      const { error: sendError } = await signUp.verifications.sendEmailCode();
+      if (sendError) {
+        setErrorMsg(sendError.message ?? 'Failed to send verification code.');
+        return;
+      }
+
       setPendingVerification(true);
     } catch (err: any) {
-      setErrorMsg(err.errors?.[0]?.message || err.message || 'Registration failed.');
+      setErrorMsg(err?.errors?.[0]?.message ?? err?.message ?? 'Registration failed.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleVerify = async () => {
-    if (!isLoaded) return;
+    if (!isLoaded || !signUp) return;
     if (!code) {
       setErrorMsg('Please enter the verification code.');
       return;
@@ -75,27 +94,31 @@ export default function SignUpScreen() {
     setErrorMsg(null);
 
     try {
-      // 3. Verify code
-      const result = await signUp.attemptEmailAddressVerification({ code });
-
-      if (result.status === 'complete') {
-        // Set the session active
-        await setActive({ session: result.createdSessionId });
-
-        // 4. Sync user profile with postgres backend
-        try {
-          const { apiClient } = await getClients();
-          await syncUserWithBackend(apiClient, email, name);
-        } catch (syncErr: any) {
-          console.error('[SignUp] Backend sync warning:', syncErr);
-        }
-
-        router.replace('/(tabs)');
-      } else {
-        setErrorMsg('Sign-up status incomplete. Verify your input.');
+      // Step 3: Verify the email code
+      const { error: verifyError } = await signUp.verifications.verifyEmailCode({ code });
+      if (verifyError) {
+        setErrorMsg(verifyError.message ?? 'Verification failed.');
+        return;
       }
+
+      // Step 4: Finalize — converts to an active session
+      const { error: finalizeError } = await signUp.finalize();
+      if (finalizeError) {
+        setErrorMsg(finalizeError.message ?? 'Could not complete sign-up.');
+        return;
+      }
+
+      // Sync user profile with postgres backend
+      try {
+        const { apiClient } = await getClients();
+        await syncUserWithBackend(apiClient, email, name);
+      } catch (syncErr: any) {
+        console.warn('[SignUp] Backend sync warning:', syncErr?.message);
+      }
+
+      router.replace('/(tabs)');
     } catch (err: any) {
-      setErrorMsg(err.errors?.[0]?.message || err.message || 'Verification failed.');
+      setErrorMsg(err?.errors?.[0]?.message ?? err?.message ?? 'Verification failed.');
     } finally {
       setLoading(false);
     }
@@ -116,7 +139,9 @@ export default function SignUpScreen() {
           {!pendingVerification ? (
             <>
               <Text style={styles.cardTitle}>Create Account</Text>
-              <Text style={styles.cardDesc}>Sign up to scan review authenticity & compare prices.</Text>
+              <Text style={styles.cardDesc}>
+                Sign up to scan review authenticity & compare prices.
+              </Text>
 
               {errorMsg && (
                 <View style={styles.errorContainer}>
@@ -161,10 +186,13 @@ export default function SignUpScreen() {
                 />
               </View>
 
+              {/* Required mount point for Clerk bot protection (web). Skipped on iOS/Android. */}
+              <View nativeID="clerk-captcha" />
+
               <TouchableOpacity
                 style={styles.button}
                 onPress={handleSignUp}
-                disabled={loading}
+                disabled={loading || !isLoaded}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFF" />
@@ -184,8 +212,8 @@ export default function SignUpScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.cardTitle}>Verify Email</Text>
-              <Text style={styles.cardDesc}>We sent a verification code to {email}.</Text>
+              <Text style={styles.cardTitle}>Verify Your Email</Text>
+              <Text style={styles.cardDesc}>We sent a 6-digit code to {email}.</Text>
 
               {errorMsg && (
                 <View style={styles.errorContainer}>
@@ -213,16 +241,16 @@ export default function SignUpScreen() {
                 {loading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.buttonText}>Verify & Sync</Text>
+                  <Text style={styles.buttonText}>Verify & Continue</Text>
                 )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.backButton}
-                onPress={() => setPendingVerification(false)}
+                onPress={() => { setPendingVerification(false); setErrorMsg(null); }}
                 disabled={loading}
               >
-                <Text style={styles.backButtonText}>Back to Sign Up</Text>
+                <Text style={styles.backButtonText}>← Back to Sign Up</Text>
               </TouchableOpacity>
             </>
           )}
@@ -233,31 +261,11 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0B0B0E',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FF3F6C',
-    letterSpacing: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#A0A0A5',
-    marginTop: 8,
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#0B0B0E' },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  header: { alignItems: 'center', marginBottom: 40 },
+  title: { fontSize: 36, fontWeight: 'bold', color: '#FF3F6C', letterSpacing: 4 },
+  subtitle: { fontSize: 14, color: '#A0A0A5', marginTop: 8, textAlign: 'center' },
   card: {
     backgroundColor: '#16161C',
     borderRadius: 16,
@@ -265,17 +273,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#24242E',
   },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  cardDesc: {
-    fontSize: 14,
-    color: '#707075',
-    marginTop: 6,
-    marginBottom: 24,
-  },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: '#FFF' },
+  cardDesc: { fontSize: 14, color: '#707075', marginTop: 6, marginBottom: 24 },
   errorContainer: {
     backgroundColor: '#FF3F3F20',
     borderWidth: 1,
@@ -284,19 +283,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
   },
-  errorText: {
-    color: '#FF3F3F',
-    fontSize: 13,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#A0A0A5',
-    marginBottom: 8,
-  },
+  errorText: { color: '#FF3F3F', fontSize: 13 },
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: '600', color: '#A0A0A5', marginBottom: 8 },
   input: {
     backgroundColor: '#0B0B0E',
     borderWidth: 1,
@@ -313,33 +302,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  buttonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  backButton: {
-    alignItems: 'center',
-    marginTop: 16,
-    padding: 12,
-  },
-  backButtonText: {
-    color: '#A0A0A5',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  footerLink: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  footerText: {
-    color: '#707075',
-    fontSize: 14,
-  },
-  accentLink: {
-    color: '#FF3F6C',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
+  buttonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  backButton: { alignItems: 'center', marginTop: 16, padding: 12 },
+  backButtonText: { color: '#A0A0A5', fontSize: 14, fontWeight: '500' },
+  footerLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  footerText: { color: '#707075', fontSize: 14 },
+  accentLink: { color: '#FF3F6C', fontSize: 14, fontWeight: 'bold' },
 });

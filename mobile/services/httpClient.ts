@@ -20,7 +20,7 @@
  *   const result = await mlClient.post<BudgetOptimizeResponse>('/budget/optimize', { body });
  */
 
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import type { ApiError, RequestOptions } from '../types';
 
 // ---------------------------------------------------------------------------

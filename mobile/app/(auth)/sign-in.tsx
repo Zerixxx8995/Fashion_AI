@@ -1,8 +1,15 @@
 /**
  * Sign In Screen — mobile/app/(auth)/sign-in.tsx
  *
- * Responsibility: Render Sign-in form and execute login via Clerk.
- * Automatically synchronises the user profile with the api-backend on success.
+ * Responsibility: Email + password sign-in using @clerk/expo v4 JS-Only flow.
+ * Compatible with Expo Go (no dev build required).
+ *
+ * API pattern (v4):
+ *   const { signIn } = useSignIn();
+ *   const { error } = await signIn.password({ identifier, password });
+ *   const { error: finalizeError } = await signIn.finalize();
+ *
+ * Syncs the signed-in user with the api-backend on success.
  */
 
 import React, { useState } from 'react';
@@ -17,13 +24,14 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useSignIn } from '@clerk/clerk-expo';
+import { useAuth, useSignIn } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { useHttpClients } from '../../services/httpClient';
 import { useAuthStore } from '../../store/authStore';
 
 export default function SignInScreen() {
-  const { signIn, setActive, isLoaded } = useSignIn();
+  const { signIn } = useSignIn();
+  const { isLoaded } = useAuth();
   const { getClients } = useHttpClients();
   const syncUserWithBackend = useAuthStore((state) => state.syncUserWithBackend);
   const router = useRouter();
@@ -34,7 +42,7 @@ export default function SignInScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSignIn = async () => {
-    if (!isLoaded) return;
+    if (!isLoaded || !signIn) return;
     if (!email || !password) {
       setErrorMsg('Please fill in all fields.');
       return;
@@ -44,31 +52,32 @@ export default function SignInScreen() {
     setErrorMsg(null);
 
     try {
-      // 1. Sign in via Clerk
-      const result = await signIn.create({
-        identifier: email,
-        password,
-      });
-
-      if (result.status === 'complete') {
-        // Set the active session in Clerk
-        await setActive({ session: result.createdSessionId });
-
-        // 2. Sync user profile with postgres backend
-        try {
-          const { apiClient } = await getClients();
-          await syncUserWithBackend(apiClient, email, email.split('@')[0]);
-        } catch (syncErr: any) {
-          console.error('[SignIn] Backend sync warning:', syncErr);
-          // Don't block navigation on sync failure, but log it
-        }
-
-        router.replace('/(tabs)');
-      } else {
-        setErrorMsg('Sign-in status incomplete. Check verification steps.');
+      // v4 method-based API: returns { error } instead of throwing
+      const { error: signInError } = await signIn.password({ identifier: email, password });
+      if (signInError) {
+        setErrorMsg(signInError.message ?? 'Authentication failed.');
+        return;
       }
+
+      const { error: finalizeError } = await signIn.finalize();
+      if (finalizeError) {
+        setErrorMsg(finalizeError.message ?? 'Sign-in could not be completed.');
+        return;
+      }
+
+      // Sync user profile with postgres backend
+      try {
+        const { apiClient } = await getClients();
+        await syncUserWithBackend(apiClient, email, email.split('@')[0]);
+      } catch (syncErr: any) {
+        console.warn('[SignIn] Backend sync warning:', syncErr?.message);
+      }
+
+      router.replace('/(tabs)');
     } catch (err: any) {
-      setErrorMsg(err.errors?.[0]?.message || err.message || 'Authentication failed.');
+      // Fallback for unexpected errors
+      const msg = err?.errors?.[0]?.message ?? err?.message ?? 'Authentication failed.';
+      setErrorMsg(msg);
     } finally {
       setLoading(false);
     }
@@ -124,7 +133,7 @@ export default function SignInScreen() {
           <TouchableOpacity
             style={styles.button}
             onPress={handleSignIn}
-            disabled={loading}
+            disabled={loading || !isLoaded}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
@@ -148,31 +157,11 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0B0B0E',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#FF3F6C',
-    letterSpacing: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#A0A0A5',
-    marginTop: 8,
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#0B0B0E' },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  header: { alignItems: 'center', marginBottom: 40 },
+  title: { fontSize: 36, fontWeight: 'bold', color: '#FF3F6C', letterSpacing: 4 },
+  subtitle: { fontSize: 14, color: '#A0A0A5', marginTop: 8, textAlign: 'center' },
   card: {
     backgroundColor: '#16161C',
     borderRadius: 16,
@@ -180,17 +169,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#24242E',
   },
-  cardTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  cardDesc: {
-    fontSize: 14,
-    color: '#707075',
-    marginTop: 6,
-    marginBottom: 24,
-  },
+  cardTitle: { fontSize: 22, fontWeight: 'bold', color: '#FFF' },
+  cardDesc: { fontSize: 14, color: '#707075', marginTop: 6, marginBottom: 24 },
   errorContainer: {
     backgroundColor: '#FF3F3F20',
     borderWidth: 1,
@@ -199,19 +179,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
   },
-  errorText: {
-    color: '#FF3F3F',
-    fontSize: 13,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#A0A0A5',
-    marginBottom: 8,
-  },
+  errorText: { color: '#FF3F3F', fontSize: 13 },
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: '600', color: '#A0A0A5', marginBottom: 8 },
   input: {
     backgroundColor: '#0B0B0E',
     borderWidth: 1,
@@ -228,23 +198,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  buttonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  footerLink: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  footerText: {
-    color: '#707075',
-    fontSize: 14,
-  },
-  accentLink: {
-    color: '#FF3F6C',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
+  buttonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  footerLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  footerText: { color: '#707075', fontSize: 14 },
+  accentLink: { color: '#FF3F6C', fontSize: 14, fontWeight: 'bold' },
 });
