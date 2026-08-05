@@ -1,13 +1,3 @@
-// Hermes React Native polyfill for global DOMException
-if (typeof global.DOMException === 'undefined') {
-  (global as any).DOMException = class DOMException extends Error {
-    constructor(message: string, name?: string) {
-      super(message);
-      this.name = name || 'DOMException';
-    }
-  };
-}
-
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
