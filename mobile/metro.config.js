@@ -5,16 +5,12 @@ const path = require('path');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-const originalGetModulesRunBeforeMainModule = config.serializer.getModulesRunBeforeMainModule;
-
-// Inject polyfills.js so it executes before any other module in the bundle
-config.serializer = {
-  ...config.serializer,
-  getModulesRunBeforeMainModule: (entryPoint) => [
+// Use Metro's correct API for polyfills: polyfillModuleNames runs these
+// files before anything else in the bundle — no recursion risk.
+config.transformer = {
+  ...config.transformer,
+  polyfillModuleNames: [
     path.join(__dirname, 'polyfills.js'),
-    ...(originalGetModulesRunBeforeMainModule
-      ? originalGetModulesRunBeforeMainModule(entryPoint)
-      : []),
   ],
 };
 
