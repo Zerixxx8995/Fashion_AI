@@ -232,6 +232,10 @@ function createClient(baseUrl: string, token: string | null) {
   };
 }
 
+export type ApiClient = ReturnType<typeof createClient>;
+
+
+
 // ---------------------------------------------------------------------------
 // Hook — useHttpClients
 // ---------------------------------------------------------------------------

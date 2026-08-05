@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import type { UserProfile } from '../types';
+import type { ApiClient } from '../services/httpClient';
 
 interface AuthState {
   user: UserProfile | null;
@@ -20,10 +21,10 @@ interface AuthState {
 
   // Actions
   setUser: (user: UserProfile | null) => void;
-  syncUserWithBackend: (apiClient: any, email: string, name?: string) => Promise<UserProfile>;
-  fetchUserProfile: (apiClient: any, userId: string) => Promise<UserProfile>;
+  syncUserWithBackend: (apiClient: ApiClient, email: string, name?: string) => Promise<UserProfile>;
+  fetchUserProfile: (apiClient: ApiClient, userId: string) => Promise<UserProfile>;
   updateUserProfile: (
-    apiClient: any,
+    apiClient: ApiClient,
     userId: string,
     updates: { body_type?: string | null; taste_preferences?: string[] }
   ) => Promise<UserProfile>;

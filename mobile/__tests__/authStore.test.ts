@@ -44,7 +44,7 @@ describe('authStore', () => {
     };
 
     const synced = await useAuthStore.getState().syncUserWithBackend(
-      mockApiClient,
+      mockApiClient as any,
       'rahul@example.com',
       'Rahul Kumar'
     );
@@ -65,7 +65,7 @@ describe('authStore', () => {
     };
 
     await expect(
-      useAuthStore.getState().syncUserWithBackend(mockApiClient, 'bad-email', 'Name')
+      useAuthStore.getState().syncUserWithBackend(mockApiClient as any, 'bad-email', 'Name')
     ).rejects.toBeDefined();
 
     expect(useAuthStore.getState().user).toBeNull();
@@ -80,7 +80,7 @@ describe('authStore', () => {
       }),
     };
 
-    const profile = await useAuthStore.getState().fetchUserProfile(mockApiClient, 'user-uuid-123');
+    const profile = await useAuthStore.getState().fetchUserProfile(mockApiClient as any, 'user-uuid-123');
 
     expect(mockApiClient.get).toHaveBeenCalledWith('/users/user-uuid-123/profile');
     expect(profile).toEqual(mockUser);
@@ -101,7 +101,7 @@ describe('authStore', () => {
     };
 
     const result = await useAuthStore.getState().updateUserProfile(
-      mockApiClient,
+      mockApiClient as any,
       'user-uuid-123',
       { body_type: 'slim', taste_preferences: ['wedding'] }
     );
