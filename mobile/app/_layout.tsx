@@ -1,9 +1,12 @@
-/**
- * Root Layout — mobile/app/_layout.tsx
- *
- * Responsibility: Mount ClerkProvider and manage root-level routing.
- * Checks authentication status and redirects to sign-in or tabs.
- */
+// Hermes React Native polyfill for global DOMException
+if (typeof global.DOMException === 'undefined') {
+  (global as any).DOMException = class DOMException extends Error {
+    constructor(message: string, name?: string) {
+      super(message);
+      this.name = name || 'DOMException';
+    }
+  };
+}
 
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
