@@ -1,0 +1,27 @@
+diff --git a/node_modules/whatwg-fetch/fetch.js b/node_modules/whatwg-fetch/fetch.js
+index f39a983..2ca1497 100644
+--- a/node_modules/whatwg-fetch/fetch.js
++++ b/node_modules/whatwg-fetch/fetch.js
+@@ -510,9 +510,11 @@ Response.redirect = function(url, status) {
+ }
+ 
+ export var DOMException = g.DOMException
+-try {
+-  new DOMException()
+-} catch (err) {
++// Hermes (React Native) does not expose DOMException as a global. The original
++// `try { new DOMException() } catch` pattern causes a fatal ReferenceError on
++// Hermes because `new undefined()` is not a catchable TypeError on that engine.
++// Guard with a simple falsy check instead.
++if (!DOMException) {
+   DOMException = function(message, name) {
+     this.message = message
+     this.name = name
+@@ -523,6 +525,7 @@ try {
+   DOMException.prototype.constructor = DOMException
+ }
+ 
++
+ export function fetch(input, init) {
+   return new Promise(function(resolve, reject) {
+     var request = new Request(input, init)
