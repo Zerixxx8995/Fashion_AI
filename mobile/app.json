@@ -22,7 +22,14 @@
     },
     "plugins": [
       "expo-secure-store",
-      "@clerk/expo"
+      "@clerk/expo",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow ZEST to access your photos to upload product images for CV analysis.",
+          "cameraPermission": "Allow ZEST to use your camera to capture product photos for CV analysis."
+        }
+      ]
     ],
     "scheme": "zest"
   }
