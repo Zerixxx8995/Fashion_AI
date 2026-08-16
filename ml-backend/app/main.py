@@ -25,14 +25,16 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+load_dotenv()
+
 from app.middleware.cors import register_cors
 from app.middleware.error_handler import register_error_handlers
 from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
 from app.middleware.auth_middleware import ClerkAuthMiddleware
 from app.routers import cv, health, trends, wardrobe, budget
-
-load_dotenv()
+from app.db.database import Base, engine
+import app.db.models  # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +49,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def create_app() -> FastAPI:
+    # Ensure database tables exist at app startup
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized successfully")
+    except Exception as exc:
+        logger.error(f"Failed to initialize database tables: {exc}")
+
     app = FastAPI(
         title="Fashion AI — ML Backend",
         description=(

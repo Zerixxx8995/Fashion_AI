@@ -44,7 +44,7 @@ export default function TrendFeed({
   return (
     <FlatList
       data={trends}
-      keyExtractor={(item) => item.category}
+      keyExtractor={(item, index) => item.id || item.name || `${item.category}-${index}`}
       renderItem={({ item }) => (
         <TrendCard
           trend={item}

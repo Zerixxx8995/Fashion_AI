@@ -98,12 +98,17 @@ export type LifecycleStage = 'emerging' | 'peaking' | 'dying';
 
 /** Single trend item from GET /trends */
 export interface TrendItem {
+  id?: string;
+  name?: string;
   category: string;
   lifecycle_stage: LifecycleStage;
-  trend_score: number;            // 0.0 – 1.0
-  product_count: number;
-  representative_image_url: string | null;
-  platforms: Platform[];
+  trend_score?: number;            // 0.0 – 1.0
+  signal_score?: number;
+  product_count?: number;
+  representative_image_url?: string | null;
+  image_urls?: string[];
+  platforms?: Platform[];
+  origin?: string;
 }
 
 /** Response from GET /trends */

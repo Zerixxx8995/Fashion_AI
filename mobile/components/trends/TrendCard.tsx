@@ -17,8 +17,18 @@ interface TrendCardProps {
 }
 
 export default function TrendCard({ trend, onPress }: TrendCardProps) {
-  // Format trend score to percentage display (e.g. 0.85 -> 85%)
-  const percentageScore = Math.round(trend.trend_score * 100);
+  // Format trend score (trend_score: 0-1, signal_score: 0-10)
+  const percentageScore = trend.trend_score !== undefined
+    ? Math.round(trend.trend_score * 100)
+    : trend.signal_score !== undefined
+    ? Math.round(trend.signal_score * 10)
+    : 85;
+
+  const imageUrl = trend.representative_image_url || trend.image_urls?.[0] || null;
+  const displayName = trend.name || trend.category;
+  const platforms = trend.platforms && trend.platforms.length > 0
+    ? trend.platforms
+    : (['myntra', 'ajio', 'amazon'] as const);
 
   return (
     <TouchableOpacity
@@ -26,11 +36,11 @@ export default function TrendCard({ trend, onPress }: TrendCardProps) {
       onPress={onPress}
       style={styles.card}
     >
-      {/* Cover Image with gradient overlay placeholder */}
+      {/* Cover Image */}
       <View style={styles.imageContainer}>
-        {trend.representative_image_url ? (
+        {imageUrl ? (
           <Image
-            source={{ uri: trend.representative_image_url }}
+            source={{ uri: imageUrl }}
             style={styles.image}
             resizeMode="cover"
           />
@@ -49,7 +59,7 @@ export default function TrendCard({ trend, onPress }: TrendCardProps) {
       {/* Card Content details */}
       <View style={styles.content}>
         <View style={styles.titleRow}>
-          <Text style={styles.categoryTitle}>{trend.category}</Text>
+          <Text style={styles.categoryTitle}>{displayName}</Text>
           <View style={styles.scoreContainer}>
             <Text style={styles.scoreText}>{percentageScore}%</Text>
             <Text style={styles.scoreLabel}>Score</Text>
@@ -57,12 +67,14 @@ export default function TrendCard({ trend, onPress }: TrendCardProps) {
         </View>
 
         <Text style={styles.productCount}>
-          {trend.product_count} listings indexed & analyzed
+          {trend.product_count !== undefined
+            ? `${trend.product_count} listings indexed & analyzed`
+            : `Signal Origin: ${trend.origin || 'Platform Bestsellers'}`}
         </Text>
 
         <View style={styles.footer}>
           <View style={styles.platformsRow}>
-            {trend.platforms.map((plat) => {
+            {platforms.map((plat) => {
               const config = PLATFORMS[plat];
               if (!config) return null;
               return (

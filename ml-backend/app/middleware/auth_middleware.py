@@ -53,9 +53,17 @@ _PUBLIC_PATHS: frozenset[str] = frozenset(
     ]
 )
 
+# Path *prefixes* that are public (checked with startswith)
+_PUBLIC_PREFIXES: tuple[str, ...] = (
+    "/api/v1/trends",           # Trend discovery — read-only, no auth needed
+    "/api/v1/recommendations",  # Browse recommendations — read-only
+    "/docs",
+    "/redoc",
+)
+
 
 def _is_public(path: str) -> bool:
-    return path in _PUBLIC_PATHS or path.startswith("/docs") or path.startswith("/redoc")
+    return path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES)
 
 
 # ---------------------------------------------------------------------------

@@ -111,7 +111,7 @@ async def unhandled_exception_handler(
     return _error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         error="Internal Server Error",
-        detail="An unexpected error occurred. Please try again later.",
+        detail=f"Unhandled error: {exc}",
     )
 
 

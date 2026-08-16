@@ -10,11 +10,11 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHttpClients } from '../../services/httpClient';
 import { getTrends } from '../../services/trendsService';
 import type { TrendItem } from '../../types';
@@ -34,8 +34,24 @@ const FILTER_CATEGORIES = [
   { id: 'bottomwear', label: 'Bottomwear' },
 ];
 
+import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
+
+// ... (in component)
 export default function DiscoverTrendsScreen() {
   const { getClients } = useHttpClients();
+  const { isSignedIn, signOut } = useAuth();
+  const router = useRouter();
+
+  const handleAuthAction = async () => {
+    if (isSignedIn) {
+      await signOut();
+      router.replace('/(auth)/sign-in');
+    } else {
+      router.push('/(auth)/sign-in');
+    }
+  };
+
 
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -75,8 +91,13 @@ export default function DiscoverTrendsScreen() {
     fetchTrends(selectedCategory, true);
   };
 
+  const handleSelectTrend = (item: TrendItem) => {
+    const productId = item.id || 'sample-product-id';
+    router.push(`/product/${productId}`);
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#0B0B0E" />
       <View style={styles.container}>
         {/* Premium Header */}
@@ -85,9 +106,20 @@ export default function DiscoverTrendsScreen() {
             <Text style={styles.headerTitle}>ZEST</Text>
             <Text style={styles.headerSubtitle}>Discover Indian Fashion Trends</Text>
           </View>
-          <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+          <View style={styles.headerRight}>
+            <View style={styles.liveIndicator}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.authBtn}
+              onPress={handleAuthAction}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.authBtnText}>
+                {isSignedIn ? 'Sign Out' : 'Sign In'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -137,6 +169,7 @@ export default function DiscoverTrendsScreen() {
           isLoading={isLoading}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          onSelectTrend={handleSelectTrend}
         />
       </View>
     </SafeAreaView>
@@ -172,6 +205,11 @@ const styles = StyleSheet.create({
     color: '#A0A0A5',
     marginTop: 2,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -194,6 +232,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#EF4444',
     letterSpacing: 0.5,
+  },
+  authBtn: {
+    backgroundColor: '#16161C',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#24242E',
+  },
+  authBtnText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#A0A0A5',
   },
   filterWrapper: {
     backgroundColor: '#0B0B0E',
