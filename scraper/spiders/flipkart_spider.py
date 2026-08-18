@@ -23,7 +23,6 @@ import re
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import scrapy
-from scrapy_playwright.page import PageMethod
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +58,7 @@ MAX_PAGES = 3
 class FlipkartSpider(scrapy.Spider):
     name = "flipkart"
     allowed_domains = ["flipkart.com", "www.flipkart.com"]
+    scraperapi_render = False  # Flipkart static HTML contains product cards
     custom_settings = {
         "DOWNLOAD_DELAY": 3,
         "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
@@ -73,6 +73,14 @@ class FlipkartSpider(scrapy.Spider):
             self.queries = CATEGORY_QUERIES
         self.max_pages = int(max_pages) if max_pages else MAX_PAGES
 
+    async def start(self):
+        """
+        Scrapy 2.13+ async entry point. Delegates to start_requests() so
+        requests are dispatched properly by the async engine.
+        """
+        for request in self.start_requests():
+            yield request
+
     def start_requests(self):
         for category_key, query in self.queries.items():
             url = f"https://www.flipkart.com/search?q={query.replace(' ', '+')}"
@@ -85,15 +93,8 @@ class FlipkartSpider(scrapy.Spider):
             callback=self.parse_listing,
             errback=self.handle_error,
             meta={
-                "playwright": True,
-                "playwright_include_page": True,
-                "playwright_page_methods": [
-                    PageMethod("wait_for_selector", "div[data-id]", timeout=20_000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                    PageMethod("wait_for_timeout", 1000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 1000),
-                ],
+                # Store original Flipkart URL so pagination can reconstruct it
+                "_original_url": url,
                 "category_key": category_key,
                 "page_num": page_num,
                 "handle_httpstatus_list": [403, 404, 429, 503],
@@ -127,37 +128,39 @@ class FlipkartSpider(scrapy.Spider):
             if not pid or len(pid) < 5:
                 continue
 
-            # Brand name is typically inside class _2WkVRV or similar
-            brand = card.css("div._2WkVRV::text").get("").strip()
-            # Title name is usually inside class IRpwTa or a._2Uzw3b / a.IRpwTa
-            title = card.css("a.IRpwTa::text").get("") or card.css("a.IRpwTa::attr(title)").get("") or card.css("a._2Uzw3b::text").get("") or ""
-            title = title.strip()
-            
+            # Flipkart's CSS class names are obfuscated and change frequently.
+            # Instead, use the ordered text nodes from the card:
+            #   index 0 → brand name
+            #   index 1 → product title
+            #   index 2 → offer price (e.g. "₹217")
+            #   index 4 → original / MRP price (e.g. "799")
+            all_texts = [t.strip() for t in card.css("::text").getall() if t.strip()]
+
+            brand = all_texts[0] if len(all_texts) > 0 else ""
+            title = all_texts[1] if len(all_texts) > 1 else ""
             full_name = f"{brand} {title}".strip() if brand else title
             if not full_name:
                 continue
 
-            # Price is inside class _30jeq3 or similar
-            price_text = card.css("div._30jeq3::text").get("")
-            price_inr = self._parse_price(price_text)
+            # Price: text at index 2 looks like "₹217" — strip non-digit chars
+            price_inr = None
+            if len(all_texts) > 2:
+                price_raw = re.sub(r"[^\d]", "", all_texts[2])
+                price_inr = int(price_raw) if price_raw else None
 
-            # Image url
-            img_url = card.css("img._396cs4::attr(src)").get("") or card.css("img._2r43z5::attr(src)").get("") or card.css("img::attr(src)").get("")
+            # Image url — stable tag-based selector
+            img_url = card.css("img::attr(src)").get("")
             img_urls = [img_url] if img_url else []
 
-            # URL
-            relative_url = card.css("a.IRpwTa::attr(href)").get("") or card.css("a._2Uzw3b::attr(href)").get("") or card.css("a::attr(href)").get("")
+            # URL — first anchor href in the card
+            relative_url = card.css("a::attr(href)").get("")
             product_url = urljoin("https://www.flipkart.com", relative_url) if relative_url else ""
 
             # Standardise Flipkart URL (strip tracking params but retain pid)
             if product_url:
                 parsed_url = urlparse(product_url)
                 qs = parse_qs(parsed_url.query)
-                clean_qs = {}
-                if "pid" in qs:
-                    clean_qs["pid"] = qs["pid"][0]
-                # Rebuild
-                query_str = f"?pid={clean_qs['pid']}" if "pid" in clean_qs else ""
+                query_str = f"?pid={qs['pid'][0]}" if "pid" in qs else ""
                 product_url = f"https://www.flipkart.com{parsed_url.path}{query_str}"
 
             yield {
@@ -178,7 +181,10 @@ class FlipkartSpider(scrapy.Spider):
             # Look for the pagination Next button (usually has text containing 'Next' or span containing 'Next')
             next_url = response.xpath("//a[contains(., 'Next') or span[contains(., 'Next')]]/@href").get()
             if next_url:
-                full_next_url = urljoin("https://www.flipkart.com", next_url)
+                # Use original URL domain since response.url has ScraperAPI domain
+                original_url = response.meta.get("_original_url", "")
+                base_domain = "https://www.flipkart.com"
+                full_next_url = urljoin(base_domain, next_url)
                 logger.info("[flipkart_spider] Following page %d: %s", page_num + 1, full_next_url)
                 yield self._make_request(full_next_url, category_key, page_num + 1)
 

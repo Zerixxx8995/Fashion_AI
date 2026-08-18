@@ -23,7 +23,6 @@ import re
 from urllib.parse import urljoin
 
 import scrapy
-from scrapy_playwright.page import PageMethod
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +59,7 @@ MAX_PAGES = 3
 class AmazonSpider(scrapy.Spider):
     name = "amazon"
     allowed_domains = ["amazon.in", "www.amazon.in"]
+    scraperapi_render = False  # Amazon static HTML contains product cards
     custom_settings = {
         "DOWNLOAD_DELAY": 3,
         "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
@@ -74,6 +74,14 @@ class AmazonSpider(scrapy.Spider):
             self.queries = CATEGORY_QUERIES
         self.max_pages = int(max_pages) if max_pages else MAX_PAGES
 
+    async def start(self):
+        """
+        Scrapy 2.13+ async entry point. Delegates to start_requests() so
+        requests are dispatched properly by the async engine.
+        """
+        for request in self.start_requests():
+            yield request
+
     def start_requests(self):
         for category_key, query in self.queries.items():
             url = f"https://www.amazon.in/s?k={query.replace(' ', '+')}"
@@ -86,15 +94,8 @@ class AmazonSpider(scrapy.Spider):
             callback=self.parse_listing,
             errback=self.handle_error,
             meta={
-                "playwright": True,
-                "playwright_include_page": True,
-                "playwright_page_methods": [
-                    PageMethod("wait_for_selector", "div[data-component-type='s-search-result']", timeout=20_000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                    PageMethod("wait_for_timeout", 1000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 1000),
-                ],
+                # Store original Amazon URL so pagination can reconstruct it
+                "_original_url": url,
                 "category_key": category_key,
                 "page_num": page_num,
                 "handle_httpstatus_list": [403, 404, 429, 503],
@@ -126,26 +127,39 @@ class AmazonSpider(scrapy.Spider):
             if not asin:
                 continue
 
-            # Title & Brand
-            name = card.css("h2 a span::text").get("").strip()
+            # Title — Amazon India uses h2 span (not h2 a span) in static HTML
+            name = (
+                card.css("h2 span::text").get("")
+                or card.css(".a-size-base-plus.a-color-base.a-text-normal::text").get("")
+                or card.css("span.a-text-normal::text").get("")
+            ).strip()
             if not name:
                 continue
 
-            # Amazon listing names usually start with brand
-            brand_match = re.match(r"^([A-Za-z0-9\s&]+?)\s+", name)
+            # Brand heuristic: first word/words of the title before common separators
+            brand_match = re.match(r"^([A-Za-z0-9&\-]+(?:\s+[A-Za-z0-9&\-]+)?)\s+", name)
             brand = brand_match.group(1) if brand_match else ""
 
-            # Price
+            # Price — .a-price-whole contains digits + commas (e.g. "1,099")
             price_text = card.css(".a-price-whole::text").get("")
             price_inr = self._parse_price(price_text)
 
             # Image
-            img_url = card.css("img.s-image::attr(src)").get("")
+            img_url = card.css("img.s-image::attr(src)").get("") or card.css("img::attr(src)").get("")
             img_urls = [img_url] if img_url else []
 
-            # URL
-            relative_url = card.css("h2 a::attr(href)").get("")
-            product_url = urljoin("https://www.amazon.in", relative_url) if relative_url else ""
+            # URL — prefer a.a-link-normal (actual product link) over h2 a (may be sponsored /sspa/)
+            relative_url = (
+                card.css("a.a-link-normal.s-no-outline::attr(href)").get("")
+                or card.css("h2 a::attr(href)").get("")
+            )
+            # Ensure we get the real product URL, not a sponsored redirect
+            if relative_url and not relative_url.startswith("/sspa"):
+                product_url = urljoin("https://www.amazon.in", relative_url)
+            elif asin:
+                product_url = f"https://www.amazon.in/dp/{asin}"
+            else:
+                product_url = ""
 
             yield {
                 "platform": "amazon",
@@ -165,7 +179,10 @@ class AmazonSpider(scrapy.Spider):
             # Look for the Next Page button link
             next_url = response.css("a.s-pagination-next::attr(href)").get()
             if next_url:
-                full_next_url = urljoin("https://www.amazon.in", next_url)
+                # Use original URL domain since response.url has ScraperAPI domain
+                original_url = response.meta.get("_original_url", "")
+                base_domain = "https://www.amazon.in"
+                full_next_url = urljoin(base_domain, next_url)
                 logger.info("[amazon_spider] Following page %d: %s", page_num + 1, full_next_url)
                 yield self._make_request(full_next_url, category_key, page_num + 1)
 

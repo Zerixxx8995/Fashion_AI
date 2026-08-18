@@ -23,7 +23,6 @@ import re
 from urllib.parse import urljoin
 
 import scrapy
-from scrapy_playwright.page import PageMethod
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +59,7 @@ MAX_PAGES = 3
 class AjioSpider(scrapy.Spider):
     name = "ajio"
     allowed_domains = ["ajio.com", "www.ajio.com"]
+    scraperapi_render = False
     custom_settings = {
         "DOWNLOAD_DELAY": 3,
         "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
@@ -73,6 +73,14 @@ class AjioSpider(scrapy.Spider):
         else:
             self.queries = CATEGORY_QUERIES
         self.max_pages = int(max_pages) if max_pages else MAX_PAGES
+
+    async def start(self):
+        """
+        Scrapy 2.13+ async entry point. Delegates to start_requests() so
+        requests are dispatched properly by the async engine.
+        """
+        for request in self.start_requests():
+            yield request
 
     def start_requests(self):
         for category_key, query in self.queries.items():
@@ -95,15 +103,8 @@ class AjioSpider(scrapy.Spider):
             callback=self.parse_listing,
             errback=self.handle_error,
             meta={
-                "playwright": True,
-                "playwright_include_page": True,
-                "playwright_page_methods": [
-                    PageMethod("wait_for_selector", "div.item", timeout=20_000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                    PageMethod("wait_for_timeout", 1000),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 1000),
-                ],
+                # Store original AJIO URL so pagination can reconstruct it
+                "_original_url": paginated_url,
                 "category_key": category_key,
                 "page_num": page_num,
                 "handle_httpstatus_list": [403, 404, 429, 503],
@@ -137,77 +138,125 @@ class AjioSpider(scrapy.Spider):
         # Trigger pagination if we got items
         if len(cards) > 0 and page_num < self.max_pages - 1:
             next_page = page_num + 1
-            base_url = response.url.split("&currentPage=")[0].split("?currentPage=")[0]
+            original_url = response.meta.get("_original_url", "")
+            base_url = original_url.split("&currentPage=")[0].split("?currentPage=")[0]
             logger.info("[ajio_spider] Following page %d: %s", next_page, base_url)
             yield self._make_request(base_url, category_key, next_page)
 
     def _extract_from_preloaded_state(self, response, canonical_category: str):
         """
-        Extract AJIO search items directly from JSON inside window.__PRELOADED_STATE__.
+        Extract AJIO search items from __PRELOADED_STATE__ embedded in the page HTML.
+
+        AJIO embeds a large Redux state object in the raw HTML page via:
+            __PRELOADED_STATE__ = { ... }
+        The state is NOT wrapped in a <script> tag with a clean closing, so we
+        use character-level brace matching to extract the full JSON blob.
+
+        Product data is stored at: state["grid"]["entities"] — a dict keyed by
+        product code (e.g. "443347797001") with full product metadata.
         """
-        pattern = r"window\.__PRELOADED_STATE__\s*=\s*(\{.+?\});?\s*</script>"
-        match = re.search(pattern, response.text, re.DOTALL)
-        if not match:
+        MARKER = "__PRELOADED_STATE__ = "
+        raw_text = response.text
+        idx = raw_text.find(MARKER)
+        if idx < 0:
+            logger.debug("[ajio_spider] __PRELOADED_STATE__ marker not found in response")
+            return
+
+        raw = raw_text[idx + len(MARKER):]
+
+        # Robust brace-match extraction (handles embedded JS without clean </script> boundary)
+        depth = 0; end = 0; in_str = False; esc = False
+        for i, c in enumerate(raw):
+            if esc:
+                esc = False
+                continue
+            if c == '\\' and in_str:
+                esc = True
+                continue
+            if c == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+            if depth == 0 and i > 0:
+                end = i + 1
+                break
+
+        if not end:
+            logger.debug("[ajio_spider] Failed to find end of __PRELOADED_STATE__ blob")
             return
 
         try:
-            state = json.loads(match.group(1))
-            # Preloaded state stores search results under:
-            # state['grid']['entities'] or similar. Let's find it.
-            entities = state.get("grid", {}).get("entities", []) or state.get("search", {}).get("entities", [])
-            
-            # If entities is empty, check if we have a searchResult list
-            if not entities:
-                search_data = state.get("searchResponse", {}) or state.get("gridResponse", {})
-                entities = search_data.get("products", []) or search_data.get("results", [])
-
-            for item in entities:
-                platform_id = str(item.get("code") or item.get("id") or "")
-                if not platform_id:
-                    continue
-
-                name = item.get("name") or item.get("title") or ""
-                brand = item.get("fn") or item.get("brandName") or ""
-                full_name = f"{brand} {name}".strip() if brand else name
-                if not full_name:
-                    continue
-
-                # Pricing
-                price_val = None
-                price_data = item.get("price") or item.get("value")
-                if isinstance(price_data, dict):
-                    price_val = price_data.get("value") or price_data.get("price")
-                elif isinstance(price_data, (int, float)):
-                    price_val = price_data
-                elif isinstance(item.get("price"), dict):
-                    price_val = item["price"].get("value")
-                
-                # Image
-                images = item.get("images") or []
-                img_urls = []
-                for img in images:
-                    url = img.get("url") if isinstance(img, dict) else img
-                    if url and url.startswith("http"):
-                        img_urls.append(url)
-                
-                # Product URL
-                url_slug = item.get("url") or f"/p/{platform_id}"
-                product_url = urljoin("https://www.ajio.com", url_slug)
-
-                yield {
-                    "platform": "ajio",
-                    "platform_id": platform_id,
-                    "name": full_name,
-                    "brand": brand,
-                    "price_inr": int(price_val) if price_val else None,
-                    "stock_image_urls": img_urls,
-                    "category": canonical_category,
-                    "url": product_url,
-                    "seller_id": "",
-                    "review_image_urls": [],
-                }
+            state = json.loads(raw[:end])
         except Exception as exc:
-            logger.debug("[ajio_spider] Preloaded state parsing failed: %s", exc)
+            logger.debug("[ajio_spider] JSON parse failed: %s", exc)
+            return
+
+        # Product data keyed by product code under state["grid"]["entities"]
+        entities: dict = state.get("grid", {}).get("entities", {})
+        if not entities:
+            logger.debug("[ajio_spider] state[grid][entities] is empty")
+            return
+
+        logger.info("[ajio_spider] Extracted %d product entities from state", len(entities))
+
+        for code, item in entities.items():
+            if not isinstance(item, dict):
+                continue
+
+            platform_id = str(item.get("code") or code)
+
+            # Brand: stored inside fnlColorVariantData.brandName
+            variant_data = item.get("fnlColorVariantData") or {}
+            brand = (
+                variant_data.get("brandName")
+                or item.get("brandName")
+                or ""
+            )
+
+            name = item.get("name") or ""
+            full_name = f"{brand} {name}".strip() if brand else name
+            if not full_name:
+                continue
+
+            # Price: use offerPrice (discounted) if available, fallback to price
+            offer_price = item.get("offerPrice") or {}
+            base_price = item.get("price") or {}
+            price_val = (
+                offer_price.get("value")
+                or base_price.get("value")
+            )
+
+            # Images
+            images = item.get("images") or []
+            img_urls = []
+            for img in images:
+                if isinstance(img, dict):
+                    img_url = img.get("url", "")
+                    if img_url and img_url.startswith("http"):
+                        img_urls.append(img_url)
+
+            # URL
+            url_slug = item.get("url") or f"/p/{platform_id}"
+            product_url = urljoin("https://www.ajio.com", url_slug)
+
+            yield {
+                "platform": "ajio",
+                "platform_id": platform_id,
+                "name": full_name,
+                "brand": brand,
+                "price_inr": int(price_val) if price_val else None,
+                "stock_image_urls": img_urls,
+                "category": canonical_category,
+                "url": product_url,
+                "seller_id": "",
+                "review_image_urls": [],
+            }
+
 
     def handle_error(self, failure):
         logger.error("[ajio_spider] Error: %s", failure.request.url)
