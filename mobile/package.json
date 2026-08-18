@@ -31,6 +31,7 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "moduleNameMapper": {
+      "^@clerk/expo$": "<rootDir>/__mocks__/@clerk/clerk-expo.ts",
       "^@clerk/clerk-expo$": "<rootDir>/__mocks__/@clerk/clerk-expo.ts"
     },
     "transform": {
