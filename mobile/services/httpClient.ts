@@ -20,24 +20,27 @@
  *   const result = await mlClient.post<BudgetOptimizeResponse>('/budget/optimize', { body });
  */
 
+import Constants from 'expo-constants';
 import { useAuth } from '@clerk/expo';
 import type { ApiError, RequestOptions } from '../types';
 
-// ---------------------------------------------------------------------------
-// Base URLs — read from Expo public env vars at build time
-// ---------------------------------------------------------------------------
+// Dynamically extract active host IP from Expo Metro bundler connection
+const hostUri = Constants.expoConfig?.hostUri;
+const localHostIp = hostUri ? hostUri.split(':')[0] : 'localhost';
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+function resolveBaseUrl(envUrl: string | undefined, defaultPort: number, defaultPath: string = ''): string {
+  if (envUrl) return envUrl;
+  return `http://${localHostIp}:${defaultPort}${defaultPath}`;
+}
 
-const ML_BASE_URL =
-  process.env.EXPO_PUBLIC_ML_BASE_URL ?? 'http://localhost:8000/api/v1';
+const API_BASE_URL = resolveBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL, 3000);
+const ML_BASE_URL = resolveBaseUrl(process.env.EXPO_PUBLIC_ML_BASE_URL, 8000, '/api/v1');
 
 // ---------------------------------------------------------------------------
 // Default timeout
 // ---------------------------------------------------------------------------
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // Error normalisation

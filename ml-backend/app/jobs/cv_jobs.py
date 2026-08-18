@@ -119,17 +119,22 @@ def score_product_image(
             job_id, result.overall_confidence, result.label,
         )
 
+        from datetime import datetime
         return {
             "job_id": job_id,
             "status": "complete",
+            "confidence_score": result.overall_confidence,
+            "overall_confidence": result.overall_confidence,
             "stock_match_score": result.stock_match_score,
             "authenticity_score": result.authenticity_score,
-            "overall_confidence": result.overall_confidence,
+            "fake_review_flag": result.authenticity_score < 0.5,
+            "matching_stock_url": stock_image_urls[0] if stock_image_urls else None,
             "label": result.label,
             "num_stock_images_used": result.num_stock_images_used,
-            "uploaded_image_url": uploaded_image_url,
+            "uploaded_image_url": uploaded_image_url if isinstance(uploaded_image_url, str) else None,
             "product_id": product_id,
             "user_id": user_id,
+            "computed_at": datetime.utcnow().isoformat() + "Z",
         }
 
     except Exception as exc:

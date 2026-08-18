@@ -16,14 +16,13 @@ Endpoints:
   POST   /cv/similar                      Find visually similar cheaper products
 """
 
-from __future__ import annotations
-
 from typing import Annotated, Any, List, Optional
-
-from fastapi import APIRouter, Form, status
+from fastapi import APIRouter, Form, File, UploadFile, status
 
 from app.controllers import cv_controller
 from app.models.cv_models import SimilarProductsRequest
+
+router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
 router = APIRouter(prefix="/cv", tags=["Computer Vision"])
 
@@ -39,10 +38,11 @@ router = APIRouter(prefix="/cv", tags=["Computer Vision"])
     response_description="Job envelope with job_id returned immediately",
 )
 async def submit_cv_score(
-    product_id: Annotated[str, Form(..., description="Product UUID")],
-    user_id: Annotated[str, Form(..., description="User UUID")],
-    uploaded_image_url: Annotated[str, Form(..., description="Backblaze B2 URL of uploaded image")],
-    stock_image_urls: Annotated[List[str], Form(..., description="Stock image URLs for the product listing")],
+    product_id: Annotated[str, Form(description="Product UUID")] = "unknown",
+    user_id: Annotated[str, Form(description="User UUID")] = "guest",
+    uploaded_image_url: Annotated[Optional[str], Form(description="Backblaze B2 URL or image path of uploaded image")] = None,
+    file: Optional[UploadFile] = File(None, description="Uploaded image file binary from mobile app"),
+    stock_image_urls: Annotated[List[str], Form(description="Stock image URLs for the product listing")] = [],
 ) -> dict[str, Any]:
     """
     Submit a user-uploaded product photo for CV confidence scoring.
@@ -54,6 +54,7 @@ async def submit_cv_score(
         product_id=product_id,
         user_id=user_id,
         uploaded_image_url=uploaded_image_url,
+        file=file,
         stock_image_urls=stock_image_urls,
     )
 

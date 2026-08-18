@@ -39,12 +39,15 @@ _connect_args: dict = {}
 if _IS_SQLITE:
     # SQLite requires check_same_thread=False when used across threads in tests
     _connect_args = {"check_same_thread": False}
+else:
+    _connect_args = {"connect_timeout": 10}
 
 engine = create_engine(
     DATABASE_URL,
     connect_args=_connect_args,
     echo=False,           # Set True to log all SQL (useful for debugging)
     pool_pre_ping=True,   # Verify connections before use — prevents stale sockets
+    pool_recycle=300,     # Recycle connections every 5 mins to handle Neon idle disconnects
 )
 
 # Enable WAL mode for SQLite (better concurrent read performance in tests)

@@ -23,13 +23,16 @@ from app.db.database import get_db
 router = APIRouter(prefix="/trends", tags=["Trends Discovery"])
 
 
+from fastapi.concurrency import run_in_threadpool
+
+
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
     summary="Get current trending items with lifecycle stage",
     response_description="List of trending items categorized by category & score",
 )
-def get_trends(
+async def get_trends(
     category: Optional[str] = Query(None, description="Optional category filter (e.g. 'tops', 'jeans')"),
     limit: int = Query(10, ge=1, le=50, description="Max number of trend items to return"),
     db: Session = Depends(get_db),
@@ -39,7 +42,9 @@ def get_trends(
     Returns trending items containing trend signal scores and lifecycle stages
     (emerging | peaking | dying).
     """
-    return trends_controller.handle_get_trends(db, category=category, limit=limit)
+    return await run_in_threadpool(
+        trends_controller.handle_get_trends, db, category=category, limit=limit
+    )
 
 
 @router.post(

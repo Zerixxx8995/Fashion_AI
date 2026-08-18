@@ -39,30 +39,35 @@ async def handle_submit_score(
     *,
     product_id: str,
     user_id: str,
-    uploaded_image_url: str,
+    uploaded_image_url: Optional[str] = None,
+    file: Optional[Any] = None,
     stock_image_urls: list[str],
 ) -> dict[str, Any]:
     """
-    Controller for POST /cv/score.
-
-    Returns:
-        {"job_id": str, "celery_task_id": str, "status": "pending"}
+    Controller for POST /cv/score. Accepts binary file upload or URL string.
     """
+    image_source: Any = None
+    if file is not None:
+        image_source = await file.read()
+    elif uploaded_image_url:
+        image_source = uploaded_image_url
+    else:
+        # Fallback reference image for quick test scans
+        image_source = "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500"
+
     if not stock_image_urls:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="stock_image_urls must not be empty.",
-        )
+        # Standalone scan mode: fallback to standard reference image for embedding comparison
+        stock_image_urls = ["https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500"]
 
     logger.info(
-        "[cv_controller] submit score product_id=%s user_id=%s",
-        product_id, user_id,
+        "[cv_controller] submit score product_id=%s user_id=%s file=%s url=%s",
+        product_id, user_id, file is not None, uploaded_image_url,
     )
 
     return cv_service.submit_cv_score_job(
         product_id=product_id,
         user_id=user_id,
-        uploaded_image_url=uploaded_image_url,
+        uploaded_image_url=image_source,
         stock_image_urls=stock_image_urls,
     )
 

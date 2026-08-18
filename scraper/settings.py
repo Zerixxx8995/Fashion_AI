@@ -48,33 +48,31 @@ RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 DOWNLOADER_MIDDLEWARES = {
     # Disable Scrapy's default UserAgent middleware
     "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
-    # Disable Scrapy's default RetryMiddleware (will keep our own)
-    # "scrapy.downloadermiddlewares.retry.RetryMiddleware": None,
-    # ScraperAPI proxy + credit monitor (must run BEFORE HttpCompressionMiddleware)
+    # ScraperAPI proxy + credit monitor
     "middlewares.proxy_middleware.ScraperAPIProxyMiddleware": 350,
-    # Playwright downloader (renders JS before Scrapy parses)
-    "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler": None,
 }
+
+
 
 # ---------------------------------------------------------------------------
 # Playwright downloader handlers
+# NOTE: On Windows (dev), we use ScraperAPI URL-rewrite mode — ScraperAPI
+# renders pages in their cloud, no local browser needed. DOWNLOAD_HANDLERS
+# and PLAYWRIGHT_* settings are only needed when running on Linux (Docker)
+# with SCRAPERAPI_MODE=proxy and local Playwright. Keep TWISTED_REACTOR
+# for that future production path.
 # ---------------------------------------------------------------------------
-DOWNLOAD_HANDLERS = {
-    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
-}
-
-PLAYWRIGHT_BROWSER_TYPE = "chromium"
-PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": True,
-    "args": [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-    ],
-}
-PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30_000  # 30s
+# DOWNLOAD_HANDLERS = {
+#     "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+#     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+# }
+# PLAYWRIGHT_BROWSER_TYPE = "chromium"
+# PLAYWRIGHT_LAUNCH_OPTIONS = {
+#     "headless": True,
+#     "args": ["--no-sandbox", "--disable-setuid-sandbox",
+#              "--disable-dev-shm-usage", "--disable-gpu"],
+# }
+# PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30_000
 
 # ---------------------------------------------------------------------------
 # Item pipelines

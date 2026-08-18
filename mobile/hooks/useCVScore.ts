@@ -172,7 +172,7 @@ export function useCVScore(params: {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
 
@@ -203,7 +203,7 @@ export function useCVScore(params: {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
+      allowsEditing: false,
       quality: 0.8,
     });
 

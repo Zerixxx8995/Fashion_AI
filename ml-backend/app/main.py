@@ -44,18 +44,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+from contextlib import asynccontextmanager
+from fastapi.concurrency import run_in_threadpool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize DB tables asynchronously on startup without blocking module import
+    try:
+        await run_in_threadpool(Base.metadata.create_all, bind=engine)
+        logger.info("Database tables initialized successfully")
+    except Exception as exc:
+        logger.error(f"Failed to initialize database tables: {exc}")
+    yield
+
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
 def create_app() -> FastAPI:
-    # Ensure database tables exist at app startup
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized successfully")
-    except Exception as exc:
-        logger.error(f"Failed to initialize database tables: {exc}")
-
     app = FastAPI(
         title="Fashion AI — ML Backend",
         description=(
@@ -66,6 +74,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # 1. Register exception handlers (wrap entire ASGI stack)

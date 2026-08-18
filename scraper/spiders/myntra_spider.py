@@ -82,7 +82,12 @@ PRODUCTS_PER_PAGE = 40  # Myntra shows 40 products per page
 
 class MyntraSpider(scrapy.Spider):
     name = "myntra"
-    allowed_domains = ["www.myntra.com", "myntra.com"]
+    allowed_domains = [
+        "www.myntra.com", "myntra.com",
+        # Required for ScraperAPI URL-rewrite mode (Windows dev).
+        # ScraperAPI rewrites target URLs through api.scraperapi.com.
+        "api.scraperapi.com",
+    ]
     custom_settings = {
         # Override global settings for Myntra-specific tuning
         "DOWNLOAD_DELAY": 3,
@@ -109,6 +114,14 @@ class MyntraSpider(scrapy.Spider):
     # Start requests — one per category
     # -------------------------------------------------------------------------
 
+    async def start(self):
+        """
+        Scrapy 2.13+ async entry point. Delegates to start_requests() so
+        requests are dispatched properly by the async engine.
+        """
+        for request in self.start_requests():
+            yield request
+
     def start_requests(self):
         for category_key, base_url in self.start_categories.items():
             logger.info("[myntra_spider] Starting category: %s → %s", category_key, base_url)
@@ -132,17 +145,9 @@ class MyntraSpider(scrapy.Spider):
             callback=self.parse_listing,
             errback=self.handle_error,
             meta={
-                "playwright": True,
-                "playwright_include_page": True,
-                "playwright_page_methods": [
-                    # Wait for Myntra's product grid container to appear
-                    PageMethod("wait_for_selector", ".results-base", timeout=20_000),
-                    # Scroll to trigger lazy-load
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                    PageMethod("wait_for_timeout", 1500),
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 1500),
-                ],
+                # Store original Myntra URL so pagination can reconstruct it
+                # even after ScraperAPI URL-rewrite changes response.url.
+                "_original_url": url,
                 "category_key": category_key,
                 "page_num": page_num,
                 "handle_httpstatus_list": [403, 404, 429, 503],
@@ -197,14 +202,20 @@ class MyntraSpider(scrapy.Spider):
         # --- Pagination ---
         if len(product_cards) >= PRODUCTS_PER_PAGE and page_num < self.max_pages:
             next_page = page_num + 1
-            base_url = response.url.split("?")[0]
+            # Use the original Myntra URL stored in meta — response.url now points
+            # to api.scraperapi.com after URL-rewrite, not the original Myntra URL.
+            original_url = response.meta.get("_original_url", "").split("?")[0]
+            if not original_url:
+                # Fallback: reconstruct from start_categories
+                original_url = self.start_categories.get(category_key, "")
             logger.info(
-                "[myntra_spider] Following page %d for category=%s",
+                "[myntra_spider] Following page %d for category=%s → %s",
                 next_page,
                 category_key,
+                original_url,
             )
             yield self._make_listing_request(
-                url=base_url,
+                url=original_url,
                 category_key=category_key,
                 page_num=next_page,
             )
@@ -219,8 +230,14 @@ class MyntraSpider(scrapy.Spider):
         Returns a dict matching the Product schema, or None if data is incomplete.
         """
         # Product URL + platform_id
-        relative_url = card.css("a.product-base::attr(href)").get("").strip()
+        # Try multiple selector patterns — Myntra's HTML structure varies
+        relative_url = (
+            card.css("a.product-base::attr(href)").get("")
+            or card.css("a[href*='/buy']::attr(href)").get("")
+            or card.css("a[href]::attr(href)").get("")
+        ).strip()
         if not relative_url:
+            logger.debug("[myntra_spider] Card has no href. HTML snippet: %s", card.get()[:300])
             return None
 
         product_url = urljoin("https://www.myntra.com", relative_url)
@@ -239,9 +256,12 @@ class MyntraSpider(scrapy.Spider):
         if not full_name:
             return None
 
-        # Price — Myntra shows discounted price in .product-discountedPrice
+        # Price — try multiple selector patterns for Myntra's various layouts
         price_text = (
             card.css(".product-discountedPrice::text").get("")
+            or card.css(".product-price span::text").get("")
+            or card.css("[class*='discountedPrice']::text").get("")
+            or card.css("[class*='Price']::text").get("")
             or card.css(".product-price::text").get("")
             or ""
         )

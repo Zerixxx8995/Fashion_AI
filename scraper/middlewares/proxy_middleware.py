@@ -68,31 +68,46 @@ class ScraperAPIProxyMiddleware:
     # Request processing — route through ScraperAPI
     # -------------------------------------------------------------------------
 
+    SCRAPERAPI_ENDPOINT = "https://api.scraperapi.com/"
+
     def process_request(self, request: Request, spider):
         """
-        Attach ScraperAPI proxy credentials to every outbound request.
-        ScraperAPI supports two integration modes:
-          1. HTTP proxy with CONNECT — set meta['proxy']
-          2. URL-rewrite API endpoint — wrap url in scraperapi.com endpoint
+        Route requests through ScraperAPI using URL-rewrite mode (mode 2).
 
-        We use mode 1 (HTTP CONNECT proxy) as it works cleanly with Playwright.
+        ScraperAPI URL-rewrite mode:
+          Wraps the target URL as a query param to ScraperAPI's endpoint.
+          ScraperAPI renders the page in their cloud (render=true) and returns
+          the fully-rendered HTML as a plain HTTP response.
+
+          This avoids the need for a local Playwright browser entirely, which
+          means no scrapy-playwright / ProactorEventLoop issues on Windows.
+
+          In production (Linux Docker), we can switch to proxy CONNECT mode
+          by setting SCRAPERAPI_MODE=proxy in the environment.
         """
         if request.meta.get("_scraperapi_routed"):
             # Already routed — skip to avoid infinite loop
             return
 
-        proxy_url = (
-            f"http://scraperapi.render=true.country_code=in:{self.api_key}"
-            f"@{self.PROXY_HOST}:{self.PROXY_PORT}"
-        )
+        from urllib.parse import urlencode
+        params = {
+            "api_key": self.api_key,
+            "url": request.url,
+            "render": "true",
+            "country_code": "in",
+        }
+        api_url = self.SCRAPERAPI_ENDPOINT + "?" + urlencode(params)
 
-        request.meta["proxy"] = proxy_url
-        request.meta["_scraperapi_routed"] = True
+        new_request = request.replace(
+            url=api_url,
+            meta={**request.meta, "_scraperapi_routed": True, "playwright": False},
+        )
 
         logger.debug(
-            "[proxy_middleware] Routing %s → ScraperAPI proxy (render=true, IN)",
+            "[proxy_middleware] Routing %s → ScraperAPI URL-rewrite (render=true, IN)",
             request.url,
         )
+        return new_request
 
     # -------------------------------------------------------------------------
     # Response processing — credit monitoring

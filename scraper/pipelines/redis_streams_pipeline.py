@@ -163,9 +163,10 @@ class RedisStreamsPipeline:
         try:
             entry_id = self.redis.xadd(
                 self.stream_name,
-                message,
+                "*",           # auto-generate stream entry ID
+                message,       # data dict (all string values)
                 maxlen=self.max_len,
-                approximate=True,
+                approximate_trim=True,
             )
             self._published += 1
             logger.debug(

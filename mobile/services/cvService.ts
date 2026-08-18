@@ -54,9 +54,28 @@ export async function submitCVScore(
   const form = new FormData();
   form.append('product_id', params.product_id);
   form.append('user_id', params.user_id);
-  form.append('uploaded_image_url', params.uploaded_image_url);
-  // FastAPI List[str] from Form — append each URL as a separate field
-  params.stock_image_urls.forEach((url) => form.append('stock_image_urls', url));
+
+  if (
+    params.uploaded_image_url.startsWith('file://') ||
+    params.uploaded_image_url.startsWith('content://') ||
+    params.uploaded_image_url.startsWith('ph://')
+  ) {
+    const rawUri = params.uploaded_image_url;
+    const filename = rawUri.split('/').pop() || 'photo.jpg';
+    const cleanFilename = filename.includes('.') ? filename : `${filename}.jpg`;
+
+    form.append('file', {
+      uri: rawUri,
+      name: cleanFilename,
+      type: 'image/jpeg',
+    } as any);
+  } else {
+    form.append('uploaded_image_url', params.uploaded_image_url);
+  }
+
+  if (params.stock_image_urls && params.stock_image_urls.length > 0) {
+    params.stock_image_urls.forEach((url) => form.append('stock_image_urls', url));
+  }
 
   return mlClient.uploadForm<CVJobSubmitResponse>('/cv/score', form);
 }

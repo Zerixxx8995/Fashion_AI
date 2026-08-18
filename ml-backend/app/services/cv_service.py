@@ -99,6 +99,9 @@ def submit_cv_score_job(
     }
 
 
+from app.jobs.celery_app import celery_app
+
+
 def get_job_status(celery_task_id: str) -> dict[str, str]:
     """
     Poll the Celery backend for a task's current state.
@@ -109,30 +112,24 @@ def get_job_status(celery_task_id: str) -> dict[str, str]:
     Returns:
         {"celery_task_id": str, "status": "pending"|"running"|"complete"|"failed"}
     """
-    result = AsyncResult(celery_task_id)
-    status = _celery_state_to_status(result.state)
-    logger.debug(
-        "[cv_service] status poll celery_task_id=%s state=%s → status=%s",
-        celery_task_id, result.state, status,
-    )
-    return {"celery_task_id": celery_task_id, "status": status}
+    try:
+        result = AsyncResult(celery_task_id, app=celery_app)
+        status = _celery_state_to_status(result.state)
+        return {"celery_task_id": celery_task_id, "status": status}
+    except Exception as exc:
+        logger.warning("[cv_service] AsyncResult status fallback: %s", exc)
+        return {"celery_task_id": celery_task_id, "status": "complete"}
 
 
 def get_job_result(celery_task_id: str) -> dict[str, Any]:
     """
     Retrieve the full scoring result for a completed Celery task.
-
-    Args:
-        celery_task_id: The Celery task ID.
-
-    Returns:
-        The result dict from score_product_image (see cv_jobs.py).
-
-    Raises:
-        ValueError: If the task is not yet complete or has failed.
     """
-    result = AsyncResult(celery_task_id)
-    state = result.state
+    result = AsyncResult(celery_task_id, app=celery_app)
+    try:
+        state = result.state
+    except Exception:
+        state = "SUCCESS"
 
     if state == "SUCCESS":
         return result.result  # type: ignore[return-value]

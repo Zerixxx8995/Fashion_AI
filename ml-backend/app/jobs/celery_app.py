@@ -56,6 +56,12 @@ celery_app.conf.update(
     # Retry policy for transient broker failures
     broker_connection_retry_on_startup=True,
 
+    # In local development without a separate Celery worker, task_always_eager runs tasks synchronously.
+    task_always_eager=os.getenv("CELERY_ALWAYS_EAGER", "true").lower() == "true",
+    task_store_eager_result=True,
+    task_eager_propagates=True,
+    result_backend="cache+memory://",
+
     # Task routing (explicit queues keep CV jobs and scraping jobs separate)
     task_routes={
         "app.jobs.cv_jobs.*": {"queue": "cv"},

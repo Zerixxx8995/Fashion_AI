@@ -22,6 +22,7 @@ import {
   View,
   Text,
   ScrollView,
+  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Animated,
@@ -191,6 +192,13 @@ export default function ScanScreen() {
             <View style={styles.errorTextWrap}>
               <Text style={styles.errorTitle}>Scan Failed</Text>
               <Text style={styles.errorDetail}>{state.errorMessage}</Text>
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={handleReset}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.retryBtnText}>↺  Try Again</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -360,6 +368,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#A05050',
     lineHeight: 18,
+  },
+  retryBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FF3F6C',
+  },
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   // Similar products

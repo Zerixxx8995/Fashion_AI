@@ -57,6 +57,7 @@ _PUBLIC_PATHS: frozenset[str] = frozenset(
 _PUBLIC_PREFIXES: tuple[str, ...] = (
     "/api/v1/trends",           # Trend discovery — read-only, no auth needed
     "/api/v1/recommendations",  # Browse recommendations — read-only
+    "/api/v1/cv",               # Computer Vision scan engine — open for guest & authenticated users
     "/docs",
     "/redoc",
 )
@@ -103,13 +104,12 @@ def _get_jwks() -> dict:
 # Token verification
 # ---------------------------------------------------------------------------
 
-def _verify_token(token: str) -> Optional[dict]:
-    """
-    Decode and verify a Clerk JWT.
+_JWKS_CLIENT: Optional[Any] = None
 
-    Returns the decoded claims dict on success, None on any failure.
-    """
-    try:
+
+def _get_jwks_client() -> Any:
+    global _JWKS_CLIENT  # noqa: PLW0603
+    if _JWKS_CLIENT is None:
         import jwt
         from jwt import PyJWKClient
 
@@ -117,15 +117,25 @@ def _verify_token(token: str) -> Optional[dict]:
         if not jwks_url:
             issuer = os.getenv("CLERK_JWT_ISSUER", "")
             jwks_url = f"{issuer.rstrip('/')}/.well-known/jwks.json"
+        _JWKS_CLIENT = PyJWKClient(jwks_url, cache_keys=True)
+    return _JWKS_CLIENT
 
-        jwks_client = PyJWKClient(jwks_url)
+
+def _verify_token(token: str) -> Optional[dict]:
+    """
+    Decode and verify a Clerk JWT using a cached PyJWKClient.
+    Returns the decoded claims dict on success, None on any failure.
+    """
+    try:
+        import jwt
+        jwks_client = _get_jwks_client()
         signing_key = jwks_client.get_signing_key_from_jwt(token)
 
         claims = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            options={"verify_aud": False},   # Clerk JWTs don't use audience by default
+            options={"verify_aud": False},
         )
         return claims
 
