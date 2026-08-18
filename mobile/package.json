@@ -47,6 +47,8 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "moduleNameMapper": {
+      "^expo-constants$": "<rootDir>/__mocks__/expo-constants.ts",
+      "^@clerk/expo$": "<rootDir>/__mocks__/@clerk/clerk-expo.ts",
       "^@clerk/clerk-expo$": "<rootDir>/__mocks__/@clerk/clerk-expo.ts"
     },
     "transform": {
