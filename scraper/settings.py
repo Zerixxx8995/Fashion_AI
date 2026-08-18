@@ -48,6 +48,8 @@ RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
 DOWNLOADER_MIDDLEWARES = {
     # Disable Scrapy's default UserAgent middleware
     "scrapy.downloadermiddlewares.useragent.UserAgentMiddleware": None,
+    # Disable Scrapy's default Offsite middleware
+    "scrapy.downloadermiddlewares.offsite.OffsiteMiddleware": None,
     # ScraperAPI proxy + credit monitor
     "middlewares.proxy_middleware.ScraperAPIProxyMiddleware": 350,
 }

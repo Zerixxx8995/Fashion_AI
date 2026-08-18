@@ -89,11 +89,20 @@ class ScraperAPIProxyMiddleware:
             # Already routed — skip to avoid infinite loop
             return
 
+        # Determine if we should use JS rendering in ScraperAPI cloud.
+        # Fallback order: request meta -> spider attribute -> default True (rendered)
+        render_meta = request.meta.get("scraperapi_render")
+        if render_meta is not None:
+            render_val = "true" if render_meta else "false"
+        else:
+            spider_render = getattr(spider, "scraperapi_render", True)
+            render_val = "true" if spider_render else "false"
+
         from urllib.parse import urlencode
         params = {
             "api_key": self.api_key,
             "url": request.url,
-            "render": "true",
+            "render": render_val,
             "country_code": "in",
         }
         api_url = self.SCRAPERAPI_ENDPOINT + "?" + urlencode(params)
@@ -104,8 +113,9 @@ class ScraperAPIProxyMiddleware:
         )
 
         logger.debug(
-            "[proxy_middleware] Routing %s → ScraperAPI URL-rewrite (render=true, IN)",
+            "[proxy_middleware] Routing %s → ScraperAPI URL-rewrite (render=%s, IN)",
             request.url,
+            render_val,
         )
         return new_request
 
