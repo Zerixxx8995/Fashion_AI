@@ -255,7 +255,15 @@ export function useHttpClients() {
   const { getToken } = useAuth();
 
   const getClients = async () => {
-    const token = await getToken();
+    let token = await getToken();
+    if (!token) {
+      // Retry briefly if token is hydrating after setActive()
+      for (let i = 0; i < 3; i++) {
+        await new Promise((res) => setTimeout(res, 300));
+        token = await getToken();
+        if (token) break;
+      }
+    }
     return {
       /** Calls the Node.js api-backend (auth, users, alerts, wardrobe) */
       apiClient: createClient(API_BASE_URL, token),

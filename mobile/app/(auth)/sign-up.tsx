@@ -41,6 +41,9 @@ export default function SignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,8 +51,12 @@ export default function SignUpScreen() {
 
   const handleSignUp = async () => {
     if (!isLoaded || !signUp) return;
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       setErrorMsg('Please fill in all fields.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match.');
       return;
     }
 
@@ -57,7 +64,6 @@ export default function SignUpScreen() {
     setErrorMsg(null);
 
     try {
-      // Step 1: Create sign-up session with password strategy
       const { error: signUpError } = await signUp.password({
         emailAddress: email,
         password,
@@ -68,7 +74,6 @@ export default function SignUpScreen() {
         return;
       }
 
-      // Step 2: Send email verification code
       const { error: sendError } = await signUp.verifications.sendEmailCode();
       if (sendError) {
         setErrorMsg(sendError.message ?? 'Failed to send verification code.');
@@ -94,26 +99,16 @@ export default function SignUpScreen() {
     setErrorMsg(null);
 
     try {
-      // Step 3: Verify the email code
       const { error: verifyError } = await signUp.verifications.verifyEmailCode({ code });
       if (verifyError) {
         setErrorMsg(verifyError.message ?? 'Verification failed.');
         return;
       }
 
-      // Step 4: Finalize — converts to an active session
       const { error: finalizeError } = await signUp.finalize();
       if (finalizeError) {
         setErrorMsg(finalizeError.message ?? 'Could not complete sign-up.');
         return;
-      }
-
-      // Sync user profile with postgres backend
-      try {
-        const { apiClient } = await getClients();
-        await syncUserWithBackend(apiClient, email, name);
-      } catch (syncErr: any) {
-        console.warn('[SignUp] Backend sync warning:', syncErr?.message);
       }
 
       router.replace('/(tabs)');
@@ -175,15 +170,46 @@ export default function SignUpScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Create a strong password"
-                  placeholderTextColor="#555"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  value={password}
-                  onChangeText={setPassword}
-                />
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Create a strong password"
+                    placeholderTextColor="#555"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.toggleButton}
+                    onPress={() => setShowPassword(!showPassword)}
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <Text style={styles.toggleText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Confirm Password</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Re-enter your password"
+                    placeholderTextColor="#555"
+                    secureTextEntry={!showConfirmPassword}
+                    autoCapitalize="none"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                  />
+                  <TouchableOpacity
+                    style={styles.toggleButton}
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <Text style={styles.toggleText}>{showConfirmPassword ? 'Hide' : 'Show'}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Required mount point for Clerk bot protection (web). Skipped on iOS/Android. */}
@@ -294,6 +320,29 @@ const styles = StyleSheet.create({
     padding: 14,
     color: '#FFF',
     fontSize: 15,
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0B0B0E',
+    borderWidth: 1,
+    borderColor: '#24242E',
+    borderRadius: 8,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 14,
+    color: '#FFF',
+    fontSize: 15,
+  },
+  toggleButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  toggleText: {
+    color: '#FF3F6C',
+    fontSize: 13,
+    fontWeight: '600',
   },
   button: {
     backgroundColor: '#FF3F6C',
