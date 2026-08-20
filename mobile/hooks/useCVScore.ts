@@ -262,10 +262,86 @@ export function useCVScore(params: {
     [getClients, patch, poll, productId, userId, stockImageUrls]
   );
 
+  const pickImageFromSource = useCallback(async (source: 'gallery' | 'camera'): Promise<string | null> => {
+    if (source === 'gallery') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        patch({
+          phase: 'error',
+          errorMessage: 'Gallery permission denied. Please enable it in Settings.',
+        });
+        return null;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        return result.assets[0].uri;
+      }
+    } else {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        patch({
+          phase: 'error',
+          errorMessage: 'Camera permission denied. Please enable it in Settings.',
+        });
+        return null;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        return result.assets[0].uri;
+      }
+    }
+    return null;
+  }, [patch]);
+
+  const submitDirectComparison = useCallback(
+    async (imageUriA: string, imageUriB: string) => {
+      try {
+        stopPolling();
+        patch({ imageUri: imageUriA, phase: 'uploading', progress: 0.15, errorMessage: null });
+        const { mlClient } = await getClients();
+
+        const submission = await submitCVScore(mlClient, {
+          product_id: 'comparison',
+          user_id: userId,
+          uploaded_image_url: imageUriA,
+          stock_image_urls: [imageUriB],
+        });
+
+        pollCountRef.current = 0;
+        patch({
+          jobId: submission.job_id,
+          jobStatus: submission.status,
+          phase: 'submitted',
+          progress: 0.2,
+        });
+
+        pollTimerRef.current = setTimeout(
+          () => poll(submission.job_id),
+          POLL_INTERVAL_MS
+        );
+      } catch (err) {
+        patch({
+          phase: 'error',
+          errorMessage: err instanceof Error ? err.message : 'Failed to compare images.',
+        });
+      }
+    },
+    [getClients, patch, poll, userId, stopPolling]
+  );
+
   return {
     state,
     pickFromGallery,
     takePhoto,
+    pickImageFromSource,
+    submitDirectComparison,
     reset,
   };
 }

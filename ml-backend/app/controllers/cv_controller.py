@@ -42,6 +42,7 @@ async def handle_submit_score(
     uploaded_image_url: Optional[str] = None,
     file: Optional[Any] = None,
     stock_image_urls: list[str],
+    stock_files: list[Any] = [],
 ) -> dict[str, Any]:
     """
     Controller for POST /cv/score. Accepts binary file upload or URL string.
@@ -52,23 +53,28 @@ async def handle_submit_score(
     elif uploaded_image_url:
         image_source = uploaded_image_url
     else:
-        # Fallback reference image for quick test scans
         image_source = "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500"
 
-    if not stock_image_urls:
-        # Standalone scan mode: fallback to standard reference image for embedding comparison
-        stock_image_urls = ["https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500"]
+    stock_sources: list[Any] = []
+    if stock_files:
+        for sf in stock_files:
+            bytes_data = await sf.read()
+            stock_sources.append(bytes_data)
+    elif stock_image_urls:
+        stock_sources = list(stock_image_urls)
+    else:
+        stock_sources = ["https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500"]
 
     logger.info(
-        "[cv_controller] submit score product_id=%s user_id=%s file=%s url=%s",
-        product_id, user_id, file is not None, uploaded_image_url,
+        "[cv_controller] submit score product_id=%s user_id=%s file=%s url=%s stock_files=%d stock_urls=%d",
+        product_id, user_id, file is not None, uploaded_image_url, len(stock_files), len(stock_image_urls),
     )
 
     return cv_service.submit_cv_score_job(
         product_id=product_id,
         user_id=user_id,
         uploaded_image_url=image_source,
-        stock_image_urls=stock_image_urls,
+        stock_image_urls=stock_sources,
     )
 
 

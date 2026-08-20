@@ -1,20 +1,14 @@
 /**
  * Scan Screen — mobile/app/(tabs)/scan.tsx
  *
- * Responsibility: CV scan tab — lets the user upload a product photo,
- * polls the FastAPI async job, and renders the confidence scoring result.
+ * Responsibility: CV scan tab — supports both:
+ *   1. Single Product Scan: upload 1 product photo → get confidence score & cheaper alternatives.
+ *   2. Direct 2-Image Comparison: upload Photo 1 (Received) + Photo 2 (Ad/Ref) → compute exact similarity score.
  *
- * Flow:
- *   1. User picks image (gallery) or takes photo (camera)
- *   2. Image URI passed to useCVScore hook
- *   3. Hook submits POST /cv/score → receives job_id
- *   4. Hook polls GET /cv/score/{job_id}/status every 2s
- *   5. On complete → GET /cv/score/{job_id}/result → ConfidenceScoreCard renders
- *   6. POST /cv/similar fires to populate SimilarProductsCarousel
- *
- * Architecture:
- *   - No business logic here — all in useCVScore hook + cvService
- *   - Screen is purely presentational: maps state → UI
+ * UX enhancements:
+ *   - Pull-to-refresh (`RefreshControl`) to easily rescan anytime.
+ *   - Prominent Rescan / Reset buttons on completed result cards.
+ *   - Mode toggle switch in header ("Single Scan" vs "2-Image Match").
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -27,16 +21,20 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '@clerk/expo';
 import { useCVScore } from '../../hooks/useCVScore';
 import ImageUploader from '../../components/cv/ImageUploader';
+import CompareUploader from '../../components/cv/CompareUploader';
 import ConfidenceScoreCard from '../../components/cv/ConfidenceScoreCard';
 import SimilarProductsCarousel from '../../components/cv/SimilarProductsCarousel';
 import { useHttpClients } from '../../services/httpClient';
 import { findSimilarProducts } from '../../services/cvService';
 import type { SimilarProduct } from '../../types';
+
+export type ScanMode = 'single' | 'compare';
 
 // ---------------------------------------------------------------------------
 // Phase label helper
@@ -47,7 +45,7 @@ function getPhaseLabel(phase: string): string {
     case 'picking':    return 'Opening picker…';
     case 'uploading':  return 'Preparing image…';
     case 'submitted':  return 'Job submitted — starting analysis…';
-    case 'polling':    return 'Running CV analysis…';
+    case 'polling':    return 'Running CLIP similarity analysis…';
     case 'complete':   return 'Analysis complete!';
     case 'error':      return 'Something went wrong';
     default:           return '';
@@ -90,20 +88,35 @@ export default function ScanScreen() {
   const { user } = useUser();
   const userId = user?.id ?? 'anonymous';
 
-  const { state, pickFromGallery, takePhoto, reset } = useCVScore({
+  // Mode state
+  const [mode, setMode] = useState<ScanMode>('single');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Compare mode local image state
+  const [compareUriA, setCompareUriA] = useState<string | null>(null);
+  const [compareUriB, setCompareUriB] = useState<string | null>(null);
+
+  const {
+    state,
+    pickFromGallery,
+    takePhoto,
+    pickImageFromSource,
+    submitDirectComparison,
+    reset,
+  } = useCVScore({
     userId,
-    productId: 'unknown', // will be linked to a real product in Build Order 21
-    stockImageUrls: [],    // populated when navigating from a product page
+    productId: mode === 'compare' ? 'comparison' : 'unknown',
+    stockImageUrls: [],
   });
 
-  // Similar products state — fetched after scan completes
+  // Similar products state (for single scan mode)
   const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
   const { getClients } = useHttpClients();
 
-  // Fetch similar products once CV scan is complete
+  // Fetch similar products once CV scan completes (only in single mode)
   useEffect(() => {
-    if (state.phase !== 'complete' || !state.imageUri) return;
+    if (state.phase !== 'complete' || !state.imageUri || mode === 'compare') return;
 
     const fetchSimilar = async () => {
       setSimilarLoading(true);
@@ -115,7 +128,6 @@ export default function ScanScreen() {
         });
         setSimilarProducts(response.results ?? []);
       } catch {
-        // Non-critical — similar products section just stays empty
         setSimilarProducts([]);
       } finally {
         setSimilarLoading(false);
@@ -123,12 +135,37 @@ export default function ScanScreen() {
     };
 
     fetchSimilar();
-  }, [state.phase, state.imageUri, getClients]);
+  }, [state.phase, state.imageUri, mode, getClients]);
 
   const handleReset = useCallback(() => {
     setSimilarProducts([]);
+    setCompareUriA(null);
+    setCompareUriB(null);
     reset();
   }, [reset]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    handleReset();
+    setTimeout(() => setRefreshing(false), 300);
+  }, [handleReset]);
+
+  // Pick helper for comparison mode
+  const handlePickCompareA = async (source: 'gallery' | 'camera') => {
+    const uri = await pickImageFromSource(source);
+    if (uri) setCompareUriA(uri);
+  };
+
+  const handlePickCompareB = async (source: 'gallery' | 'camera') => {
+    const uri = await pickImageFromSource(source);
+    if (uri) setCompareUriB(uri);
+  };
+
+  const handleRunComparison = () => {
+    if (compareUriA && compareUriB) {
+      submitDirectComparison(compareUriA, compareUriB);
+    }
+  };
 
   const isBusy =
     state.phase === 'uploading' ||
@@ -139,10 +176,59 @@ export default function ScanScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* ── Header & Mode Switcher ───────────────────────────────────────── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>CV Scan</Text>
-        <Text style={styles.headerSub}>Upload a product photo · get a confidence score</Text>
+        <View style={styles.headerTopRow}>
+          <View>
+            <Text style={styles.headerTitle}>CV Scan</Text>
+            <Text style={styles.headerSub}>
+              {mode === 'single'
+                ? 'Upload product photo · get confidence score'
+                : 'Directly compare 2 images side-by-side'}
+            </Text>
+          </View>
+
+          {state.phase === 'complete' && (
+            <TouchableOpacity style={styles.headerRescanBtn} onPress={handleReset} activeOpacity={0.8}>
+              <Text style={styles.headerRescanText}>↺ Rescan</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Mode Selector Tabs */}
+        <View style={styles.modeTabs}>
+          <TouchableOpacity
+            style={[styles.modeTab, mode === 'single' && styles.modeTabActive]}
+            onPress={() => {
+              if (mode !== 'single') {
+                setMode('single');
+                handleReset();
+              }
+            }}
+            activeOpacity={0.8}
+            disabled={isBusy}
+          >
+            <Text style={[styles.modeTabText, mode === 'single' && styles.modeTabTextActive]}>
+              📱 Single Product Scan
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.modeTab, mode === 'compare' && styles.modeTabActive]}
+            onPress={() => {
+              if (mode !== 'compare') {
+                setMode('compare');
+                handleReset();
+              }
+            }}
+            activeOpacity={0.8}
+            disabled={isBusy}
+          >
+            <Text style={[styles.modeTabText, mode === 'compare' && styles.modeTabTextActive]}>
+              ⚡ 2-Image Match
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -150,15 +236,38 @@ export default function ScanScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#FF3F6C"
+            colors={['#FF3F6C']}
+          />
+        }
       >
-        {/* ── Image uploader ─────────────────────────────────────────── */}
-        <ImageUploader
-          imageUri={state.imageUri}
-          phase={state.phase}
-          onGallery={pickFromGallery}
-          onCamera={takePhoto}
-          onReset={handleReset}
-        />
+        {/* ── MODE 1: Single Scan Uploader ──────────────────────────────── */}
+        {mode === 'single' && (
+          <ImageUploader
+            imageUri={state.imageUri}
+            phase={state.phase}
+            onGallery={pickFromGallery}
+            onCamera={takePhoto}
+            onReset={handleReset}
+          />
+        )}
+
+        {/* ── MODE 2: Direct 2-Image Compare Uploader ───────────────────── */}
+        {mode === 'compare' && (
+          <CompareUploader
+            imageUriA={compareUriA}
+            imageUriB={compareUriB}
+            isBusy={isBusy}
+            onPickImageA={handlePickCompareA}
+            onPickImageB={handlePickCompareB}
+            onCompare={handleRunComparison}
+            onReset={handleReset}
+          />
+        )}
 
         {/* ── Progress bar + phase label ─────────────────────────────── */}
         {showProgress && (
@@ -197,7 +306,7 @@ export default function ScanScreen() {
                 onPress={handleReset}
                 activeOpacity={0.8}
               >
-                <Text style={styles.retryBtnText}>↺  Try Again</Text>
+                <Text style={styles.retryBtnText}>↺ Try Again</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -208,68 +317,121 @@ export default function ScanScreen() {
           <>
             <ConfidenceScoreCard result={state.result} />
 
-            {/* ── Similar products ─────────────────────────────────── */}
-            <View style={styles.similarSection}>
-              <SimilarProductsCarousel
-                products={similarProducts}
-                loading={similarLoading}
-              />
-            </View>
+            {/* Rescan / Start New Test Action */}
+            <TouchableOpacity style={styles.bottomRescanBtn} onPress={handleReset} activeOpacity={0.85}>
+              <Text style={styles.bottomRescanText}>
+                {mode === 'single' ? '📷 Scan Another Product Photo' : '⚡ Compare Two New Photos'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Similar products (Single mode only) */}
+            {mode === 'single' && (
+              <View style={styles.similarSection}>
+                <SimilarProductsCarousel
+                  products={similarProducts}
+                  loading={similarLoading}
+                />
+              </View>
+            )}
           </>
         )}
 
         {/* ── Explainer (only shown in idle state) ───────────────────── */}
         {state.phase === 'idle' && (
           <View style={styles.explainerSection}>
-            <Text style={styles.explainerTitle}>How It Works</Text>
+            <Text style={styles.explainerTitle}>
+              {mode === 'single' ? 'How Confidence Scoring Works' : 'How 2-Image Comparison Works'}
+            </Text>
 
-            <View style={styles.stepRow}>
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepNum}>1</Text>
-              </View>
-              <View style={styles.stepText}>
-                <Text style={styles.stepTitle}>Upload Product Photo</Text>
-                <Text style={styles.stepDesc}>
-                  Take or select a photo of the product you received
-                </Text>
-              </View>
-            </View>
+            {mode === 'single' ? (
+              <>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>1</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Upload Product Photo</Text>
+                    <Text style={styles.stepDesc}>
+                      Take or select a photo of the product you received
+                    </Text>
+                  </View>
+                </View>
 
-            <View style={styles.stepRow}>
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepNum}>2</Text>
-              </View>
-              <View style={styles.stepText}>
-                <Text style={styles.stepTitle}>CV Analysis Runs</Text>
-                <Text style={styles.stepDesc}>
-                  Our CLIP engine embeds your photo and compares it to the stock image
-                </Text>
-              </View>
-            </View>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>2</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>CV Analysis Runs</Text>
+                    <Text style={styles.stepDesc}>
+                      Our CLIP engine embeds your photo and compares it to stock listings
+                    </Text>
+                  </View>
+                </View>
 
-            <View style={styles.stepRow}>
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepNum}>3</Text>
-              </View>
-              <View style={styles.stepText}>
-                <Text style={styles.stepTitle}>Get Confidence Score</Text>
-                <Text style={styles.stepDesc}>
-                  See exactly how closely what you received matches what was advertised
-                </Text>
-              </View>
-            </View>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>3</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Get Confidence Score</Text>
+                    <Text style={styles.stepDesc}>
+                      See how closely what you received matches what was advertised
+                    </Text>
+                  </View>
+                </View>
 
-            <View style={styles.stepRow}>
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepNum}>4</Text>
-              </View>
-              <View style={styles.stepText}>
-                <Text style={styles.stepTitle}>Find Cheaper Alternatives</Text>
-                <Text style={styles.stepDesc}>
-                  We surface visually similar products at a lower price across platforms
-                </Text>
-              </View>
-            </View>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>4</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Find Cheaper Alternatives</Text>
+                    <Text style={styles.stepDesc}>
+                      We surface visually similar products at a lower price across platforms
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>1</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Select Photo 1 (Received)</Text>
+                    <Text style={styles.stepDesc}>
+                      Upload the physical item photo you want to verify
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>2</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Select Photo 2 (Ad / Reference)</Text>
+                    <Text style={styles.stepDesc}>
+                      Upload the online listing photo or ad screenshot
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepNum}>3</Text>
+                  </View>
+                  <View style={styles.stepText}>
+                    <Text style={styles.stepTitle}>Direct CLIP Vector Comparison</Text>
+                    <Text style={styles.stepDesc}>
+                      The AI generates normalized 512-dim embeddings for both images and computes cosine similarity
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -291,9 +453,15 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#16161C',
+    gap: 12,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     fontSize: 26,
@@ -302,9 +470,50 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   headerSub: {
-    fontSize: 13,
-    color: '#505058',
+    fontSize: 12,
+    color: '#60606A',
     marginTop: 2,
+  },
+  headerRescanBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,63,108,0.15)',
+    borderWidth: 1,
+    borderColor: '#FF3F6C',
+  },
+  headerRescanText: {
+    color: '#FF3F6C',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Mode Tabs
+  modeTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#16161C',
+    borderRadius: 12,
+    padding: 3,
+    gap: 4,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  modeTabActive: {
+    backgroundColor: '#24242E',
+  },
+  modeTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#70707A',
+  },
+  modeTabTextActive: {
+    color: '#E8E8F0',
+    fontWeight: '700',
   },
 
   // Scroll
@@ -381,6 +590,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  // Rescan CTA at bottom
+  bottomRescanBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,63,108,0.12)',
+    borderWidth: 1,
+    borderColor: '#FF3F6C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomRescanText: {
+    color: '#FF3F6C',
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   // Similar products

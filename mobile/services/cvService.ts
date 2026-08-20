@@ -74,7 +74,23 @@ export async function submitCVScore(
   }
 
   if (params.stock_image_urls && params.stock_image_urls.length > 0) {
-    params.stock_image_urls.forEach((url) => form.append('stock_image_urls', url));
+    params.stock_image_urls.forEach((url, idx) => {
+      if (
+        url.startsWith('file://') ||
+        url.startsWith('content://') ||
+        url.startsWith('ph://')
+      ) {
+        const filename = url.split('/').pop() || `stock_${idx}.jpg`;
+        const cleanFilename = filename.includes('.') ? filename : `${filename}.jpg`;
+        form.append('stock_files', {
+          uri: url,
+          name: cleanFilename,
+          type: 'image/jpeg',
+        } as any);
+      } else {
+        form.append('stock_image_urls', url);
+      }
+    });
   }
 
   return mlClient.uploadForm<CVJobSubmitResponse>('/cv/score', form);

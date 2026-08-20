@@ -38,11 +38,12 @@ router = APIRouter(prefix="/cv", tags=["Computer Vision"])
     response_description="Job envelope with job_id returned immediately",
 )
 async def submit_cv_score(
-    product_id: Annotated[str, Form(description="Product UUID")] = "unknown",
-    user_id: Annotated[str, Form(description="User UUID")] = "guest",
+    product_id: Annotated[Optional[str], Form(description="Product UUID")] = None,
+    user_id: Annotated[Optional[str], Form(description="User UUID")] = None,
     uploaded_image_url: Annotated[Optional[str], Form(description="Backblaze B2 URL or image path of uploaded image")] = None,
     file: Optional[UploadFile] = File(None, description="Uploaded image file binary from mobile app"),
     stock_image_urls: Annotated[List[str], Form(description="Stock image URLs for the product listing")] = [],
+    stock_files: List[UploadFile] = File([], description="Uploaded stock/reference binary image files"),
 ) -> dict[str, Any]:
     """
     Submit a user-uploaded product photo for CV confidence scoring.
@@ -50,12 +51,32 @@ async def submit_cv_score(
     Non-blocking — enqueues a Celery job and returns job_id immediately (HTTP 202).
     Client polls `/cv/score/{job_id}/status` until complete, then calls `/result`.
     """
+    if not product_id:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="product_id is required",
+        )
+    if not user_id:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="user_id is required",
+        )
+    if not uploaded_image_url and file is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="uploaded_image_url or file is required",
+        )
+
     return await cv_controller.handle_submit_score(
         product_id=product_id,
         user_id=user_id,
         uploaded_image_url=uploaded_image_url,
         file=file,
         stock_image_urls=stock_image_urls,
+        stock_files=stock_files,
     )
 
 
