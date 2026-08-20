@@ -69,18 +69,37 @@ def _load_model() -> tuple[CLIPModel, CLIPProcessor, torch.device]:
 
 def _load_image_from_url(url: str, timeout: int = 10) -> Image.Image:
     """
-    Fetch an image from a URL and return it as a PIL Image in RGB mode.
-
-    Args:
-        url: Public image URL.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        PIL Image in RGB mode.
-
-    Raises:
-        ValueError: If the URL cannot be fetched or decoded as an image.
+    Fetch or open an image from a URL, file:// URI, base64 string, or local path.
     """
+    if not url:
+        raise ValueError("Image URL or path string is empty.")
+
+    if url.startswith("file://"):
+        file_path = url[7:]
+        # On Windows file:///C:/... strip extra slash if needed
+        if file_path.startswith("/") and len(file_path) > 2 and file_path[2] == ":":
+            file_path = file_path[1:]
+        try:
+            return Image.open(file_path).convert("RGB")
+        except Exception as exc:
+            raise ValueError(f"Failed to open image file URI '{url}': {exc}") from exc
+
+    if url.startswith("data:image/"):
+        import base64
+        try:
+            header, encoded = url.split(",", 1)
+            data = base64.b64decode(encoded)
+            return Image.open(io.BytesIO(data)).convert("RGB")
+        except Exception as exc:
+            raise ValueError(f"Failed to decode base64 image string: {exc}") from exc
+
+    import os
+    if os.path.exists(url):
+        try:
+            return Image.open(url).convert("RGB")
+        except Exception as exc:
+            raise ValueError(f"Failed to open local image file '{url}': {exc}") from exc
+
     try:
         response = requests.get(url, timeout=timeout, stream=True)
         response.raise_for_status()
