@@ -20,17 +20,22 @@
  *   const result = await mlClient.post<BudgetOptimizeResponse>('/budget/optimize', { body });
  */
 
+import { useCallback, useMemo } from 'react';
 import Constants from 'expo-constants';
 import { useAuth } from '@clerk/expo';
 import type { ApiError, RequestOptions } from '../types';
 
 // Dynamically extract active host IP from Expo Metro bundler connection
 const hostUri = Constants.expoConfig?.hostUri;
-const localHostIp = hostUri ? hostUri.split(':')[0] : 'localhost';
+const localHostIp = hostUri ? hostUri.split(':')[0] : null;
 
 function resolveBaseUrl(envUrl: string | undefined, defaultPort: number, defaultPath: string = ''): string {
+  // If active Metro connection IP exists, prefer it so Wi-Fi IP changes never cause 408 timeouts
+  if (localHostIp && localHostIp !== 'localhost' && localHostIp !== '127.0.0.1') {
+    return `http://${localHostIp}:${defaultPort}${defaultPath}`;
+  }
   if (envUrl) return envUrl;
-  return `http://${localHostIp}:${defaultPort}${defaultPath}`;
+  return `http://localhost:${defaultPort}${defaultPath}`;
 }
 
 const API_BASE_URL = resolveBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL, 3000);
@@ -254,7 +259,7 @@ export type ApiClient = ReturnType<typeof createClient>;
 export function useHttpClients() {
   const { getToken } = useAuth();
 
-  const getClients = async () => {
+  const getClients = useCallback(async () => {
     let token = await getToken();
     if (!token) {
       // Retry briefly if token is hydrating after setActive()
@@ -270,9 +275,9 @@ export function useHttpClients() {
       /** Calls the FastAPI ml-backend (CV, trends, budget, similarity) */
       mlClient: createClient(ML_BASE_URL, token),
     };
-  };
+  }, [getToken]);
 
-  return { getClients };
+  return useMemo(() => ({ getClients }), [getClients]);
 }
 
 // ---------------------------------------------------------------------------
