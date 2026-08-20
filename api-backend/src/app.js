@@ -95,8 +95,8 @@ if (require.main === module) {
   const { initSocket } = require('./integrations/socketManager');
   const app = createApp();
   sequelize.sync().then(() => {
-    const server = app.listen(PORT, () => {
-      console.log(`[server] Server listening on port ${PORT}`);
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[server] Server listening on port ${PORT} (0.0.0.0)`);
     });
     // Attach Socket.io to the running HTTP server so WebSocket connections work
     initSocket(server);
