@@ -20,39 +20,47 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("request")
 
 
-class RequestLoggerMiddleware(BaseHTTPMiddleware):
+class RequestLoggerMiddleware:
     """
     Logs every HTTP request with method, path, status code, and duration.
-    Uses the "request" logger so log level can be toggled independently.
+    Uses pure ASGI implementation to avoid BaseHTTPMiddleware overhead.
     """
 
     def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
+        self.app = app
 
-    async def dispatch(self, request: Request, call_next):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         start = time.perf_counter()
+        method = scope.get("method", "GET")
+        path = scope.get("path", "")
 
-        logger.info("→ → %s %s", request.method, request.url.path)
+        logger.info("→ → %s %s", method, path)
 
-        response = await call_next(request)
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                duration_ms = int((time.perf_counter() - start) * 1000)
+                status_code = message.get("status", 200)
+                log_fn = logger.warning if status_code >= 400 else logger.info
+                log_fn(
+                    "← ← %s %s %d %dms",
+                    method,
+                    path,
+                    status_code,
+                    duration_ms,
+                )
+                headers = list(message.get("headers", []))
+                headers.append((b"x-response-time-ms", str(duration_ms).encode()))
+                message["headers"] = headers
 
-        duration_ms = int((time.perf_counter() - start) * 1000)
-        log_fn = logger.warning if response.status_code >= 400 else logger.info
-        log_fn(
-            "← ← %s %s %d %dms",
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
-        )
+            await send(message)
 
-        # Attach timing header for debugging
-        response.headers["X-Response-Time-Ms"] = str(duration_ms)
-        return response
+        await self.app(scope, receive, send_wrapper)

@@ -13,29 +13,18 @@ Architecture rules:
 Design:
   - Public routes (health, docs) are explicitly excluded
   - All /api/v1/* routes require a valid Bearer token
-  - On success: attaches decoded claims to request.state.user
-  - On failure: returns 401 with canonical error shape
-
-Environment variables required:
-  CLERK_JWT_ISSUER   — Clerk frontend API URL (e.g. https://<slug>.clerk.accounts.dev)
-  CLERK_JWKS_URL     — Clerk JWKS endpoint (auto-derived from issuer if not set)
-
-Note on JWKS caching:
-  JWKS keys are fetched once per process startup and cached. Clerk rotates
-  keys infrequently; restart the worker if keys become stale.
+  - Pure ASGI middleware for zero overhead.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +42,6 @@ _PUBLIC_PATHS: frozenset[str] = frozenset(
     ]
 )
 
-# Path *prefixes* that are public (checked with startswith)
 _PUBLIC_PREFIXES: tuple[str, ...] = (
     "/api/v1/trends",           # Trend discovery — read-only, no auth needed
     "/api/v1/recommendations",  # Browse recommendations — read-only
@@ -75,10 +63,6 @@ _JWKS_CACHE: Optional[dict] = None
 
 
 def _get_jwks() -> dict:
-    """
-    Fetch and cache Clerk's JWKS keys.
-    Called once at startup; re-fetches if cache is None.
-    """
     global _JWKS_CACHE  # noqa: PLW0603
     if _JWKS_CACHE is not None:
         return _JWKS_CACHE
@@ -95,7 +79,7 @@ def _get_jwks() -> dict:
         _JWKS_CACHE = resp.json()
     except Exception as exc:
         logger.error("[auth_middleware] JWKS fetch failed: %s", exc)
-        _JWKS_CACHE = {"keys": []}  # empty cache — all auth attempts will fail
+        _JWKS_CACHE = {"keys": []}
 
     return _JWKS_CACHE
 
@@ -122,10 +106,6 @@ def _get_jwks_client() -> Any:
 
 
 def _verify_token(token: str) -> Optional[dict]:
-    """
-    Decode and verify a Clerk JWT using a cached PyJWKClient.
-    Returns the decoded claims dict on success, None on any failure.
-    """
     try:
         import jwt
         jwks_client = _get_jwks_client()
@@ -148,49 +128,74 @@ def _verify_token(token: str) -> Optional[dict]:
 # Middleware class
 # ---------------------------------------------------------------------------
 
-class ClerkAuthMiddleware(BaseHTTPMiddleware):
+class ClerkAuthMiddleware:
     """
-    Starlette middleware that verifies Clerk JWTs on all protected routes.
-
-    Attaches decoded claims to request.state.user on success.
-    Returns 401 on missing or invalid token.
+    Starlette ASGI middleware that verifies Clerk JWTs on all protected routes.
     """
 
     def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
+        self.app = app
 
-    async def dispatch(self, request: Request, call_next):
-        # Skip auth for public paths
-        if _is_public(request.url.path):
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # Extract Bearer token
-        auth_header = request.headers.get("Authorization", "")
+        path = scope.get("path", "")
+        if _is_public(path):
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        auth_header = headers.get(b"authorization", b"").decode("latin1")
+
         if not auth_header.startswith("Bearer "):
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "error": "Unauthorized",
-                    "detail": "Missing or malformed Authorization header. "
-                              "Expected: 'Bearer <token>'",
-                    "status_code": 401,
-                },
-            )
+            body = json.dumps({
+                "error": "Unauthorized",
+                "detail": "Missing or malformed Authorization header. Expected: 'Bearer <token>'",
+                "status_code": 401,
+            }).encode("utf-8")
+
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("utf-8")),
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": body,
+            })
+            return
 
         token = auth_header.removeprefix("Bearer ").strip()
-
-        # Verify token
         claims = _verify_token(token)
-        if claims is None:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "error": "Unauthorized",
-                    "detail": "Invalid or expired JWT. Please sign in again.",
-                    "status_code": 401,
-                },
-            )
 
-        # Attach claims to request state for downstream use
-        request.state.user = claims
-        return await call_next(request)
+        if claims is None:
+            body = json.dumps({
+                "error": "Unauthorized",
+                "detail": "Invalid or expired JWT. Please sign in again.",
+                "status_code": 401,
+            }).encode("utf-8")
+
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode("utf-8")),
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": body,
+            })
+            return
+
+        if "state" not in scope:
+            scope["state"] = {}
+        scope["state"]["user"] = claims
+
+        await self.app(scope, receive, send)

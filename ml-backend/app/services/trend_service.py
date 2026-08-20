@@ -86,33 +86,49 @@ def get_trending_items(
     """
     Fetch trending items, optionally filtered by category.
     If the db has no trends, automatically seeds initial trends.
+    Deduplicates results by name to avoid duplicate cards.
     """
     stmt = select(TrendItem)
     if category:
         stmt = stmt.where(TrendItem.category == category.lower())
     
     # Order by highest signal score first
-    stmt = stmt.order_by(TrendItem.signal_score.desc()).limit(limit)
-    results = db.scalars(stmt).all()
+    stmt = stmt.order_by(TrendItem.signal_score.desc())
+    all_results = db.scalars(stmt).all()
 
-    if not results:
+    if not all_results:
         logger.info("[trend_service] No trends found in database. Seeding initial trend data.")
-        results = seed_initial_trends(db)
-        # Apply filtering & sorting to the seeded results if needed
+        all_results = seed_initial_trends(db)
         if category:
-            results = [r for r in results if r.category == category.lower()]
-        results.sort(key=lambda x: x.signal_score, reverse=True)
-        results = results[:limit]
+            all_results = [r for r in all_results if r.category == category.lower()]
+        all_results.sort(key=lambda x: x.signal_score, reverse=True)
 
-    return results
+    # Deduplicate by trend name
+    seen_names = set()
+    unique_results: list[TrendItem] = []
+    for item in all_results:
+        if item.name not in seen_names:
+            seen_names.add(item.name)
+            unique_results.append(item)
+        if len(unique_results) >= limit:
+            break
+
+    return unique_results
 
 
 def seed_initial_trends(db: Session) -> list[TrendItem]:
     """
-    Seed initial TrendItem entries in the database.
+    Seed initial TrendItem entries in the database without duplicates.
     """
     seeded = []
     for data in SEED_TRENDS:
+        existing = db.scalars(
+            select(TrendItem).where(TrendItem.name == data["name"])
+        ).first()
+        if existing:
+            seeded.append(existing)
+            continue
+
         trend = TrendItem(
             name=data["name"],
             category=data["category"],
@@ -126,7 +142,7 @@ def seed_initial_trends(db: Session) -> list[TrendItem]:
         seeded.append(trend)
     
     db.commit()
-    logger.info("[trend_service] Seeded %d trend items.", len(seeded))
+    logger.info("[trend_service] Seeded/retrieved %d unique trend items.", len(seeded))
     return seeded
 
 
