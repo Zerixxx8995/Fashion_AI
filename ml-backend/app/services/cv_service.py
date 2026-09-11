@@ -97,6 +97,26 @@ def submit_cv_score_job(
         # 3. Compute score
         calc_result = compute_confidence_score(uploaded_emb, stock_embs)
 
+        # 4. Log run to MLflow Tracker
+        try:
+            from app.integrations.mlflow_client import default_mlflow_tracker
+            run_id = default_mlflow_tracker.start_run(run_name=f"cv_scan_{product_id}")
+            default_mlflow_tracker.log_params({
+                "product_id": product_id,
+                "user_id": user_id,
+                "model_encoder": "CLIP-ViT-B/32",
+                "embedding_dim": len(uploaded_emb),
+                "num_stock_images": len(stock_embs),
+            })
+            default_mlflow_tracker.log_metrics({
+                "overall_confidence": calc_result.overall_confidence,
+                "stock_match_score": calc_result.stock_match_score,
+                "authenticity_score": calc_result.authenticity_score,
+            })
+            default_mlflow_tracker.end_run(status="FINISHED")
+        except Exception as mlflow_exc:
+            logger.warning("[cv_service] MLflow logging warning: %s", mlflow_exc)
+
         res_dict = {
             "job_id": job_id,
             "status": "complete",
