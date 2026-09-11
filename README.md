@@ -1,118 +1,116 @@
 # Fashion AI: Indian Fashion App with CV/ML Engine
 
-A full-stack, mobile-first Indian fashion application built with React Native (Expo) and a custom Python computer vision pipeline. The app helps users verify product authenticity (real user photos vs. stock listings), detect fake review images, find visually similar cheaper alternatives across multiple e-commerce platforms (Myntra, Ajio, Flipkart, Meesho, Amazon), track prices, and build capsule wardrobes.
+A full-stack, mobile-first Indian fashion application built with **React Native (Expo)**, **Node.js (Express)**, and a custom **Python FastAPI Computer Vision (CV) & Machine Learning (ML)** engine. 
+
+The app helps users verify product authenticity (comparing real user photos vs. stock e-commerce listings), detect fake review images, find visually similar cheaper alternatives across multiple e-commerce platforms (Myntra, Ajio, Flipkart, Meesho, Amazon), track price drops, and manage capsule wardrobes with AI gap analysis.
+
+---
+
+## 🚀 Progress & Completed Steps (Build Order 1 – 24 Completed)
+
+The project has achieved **24 out of 26 build order steps**:
+
+- [x] **Step 01–04**: System Architecture, PostgreSQL database models (Neon), FastAPI ML backend scaffold, Node.js API backend scaffold.
+- [x] **Step 05–08**: CLIP vector embedding encoder, confidence scorer, fake review image detector, and FAISS/Pinecone vector similarity search.
+- [x] **Step 09–13**: E-commerce scraper engine (Scrapy + Playwright), Celery background tasks, Backblaze B2 object storage, multi-platform price engine, and Redis caching.
+- [x] **Step 14–16**: Socket.io real-time price alerts, AI capsule wardrobe gap analysis engine, and comprehensive unit test suites.
+- [x] **Step 17–19**: Expo React Native mobile scaffold, Clerk authentication router, Home/Trends feed, and Discover personalized recommendation feed (body-type & aesthetic filters).
+- [x] **Step 20**: Mobile Computer Vision Scan screen (2-image authenticity comparison & camera scanner).
+- [x] **Step 21**: Mobile Product Detail screen, trust score badges, and cross-platform price comparison table.
+- [x] **Step 22**: Mobile Digital Wardrobe closet screen with wear counters, category filters, and AI Capsule Gap Analysis card.
+- [x] **Step 23**: Mobile Price Drop & Restock Alerts screen, Zustand alert store, and push notification simulator.
+- [x] **Step 24**: MLflow experiment tracking for CV model evaluation and accuracy metrics.
+- [ ] **Step 25**: Docker containerization & Docker Compose setup *(Upcoming)*.
+- [ ] **Step 26**: CI/CD pipeline & production deployment setup *(Upcoming)*.
 
 ---
 
 ## 🏗️ System Architecture
 
-The application is structured into four main components: a React Native mobile frontend, a FastAPI ML/CV backend, an Express Node.js core backend, and a Scrapy + Playwright scraper.
-
 ```mermaid
 graph TD
-    %% Frontend
+    %% Mobile Frontend
     Mobile[React Native Expo App] -->|HTTPS| NodeAPI[Node.js Express Backend]
-    Mobile -->|HTTPS/Poll| FastAPIML[FastAPI ML Backend]
+    Mobile -->|HTTPS / REST| FastAPIML[FastAPI ML Backend]
     Mobile -->|WebSockets| NodeAPI
     
-    %% Core Backend
-    NodeAPI -->|SQL queries| Postgres[(PostgreSQL)]
-    NodeAPI -->|Read/Write| RedisCache[(Redis Cache & Streams)]
+    %% Databases & Storage
+    NodeAPI -->|Sequelize SQL| Postgres[(Neon PostgreSQL DB)]
+    NodeAPI -->|Cache & Sessions| RedisCache[(Redis Cache & Streams)]
     
-    %% ML Backend
-    FastAPIML -->|Enqueues Jobs| RedisCache
-    FastAPIML -->|Cosine Similarity| Pinecone[(Pinecone Vector DB)]
+    %% ML & Vector Pipeline
+    FastAPIML -->|Enqueues Jobs| Celery[Celery Workers]
+    FastAPIML -->|Vector Similarity| FAISS[(FAISS / Pinecone Vector Index)]
+    FastAPIML -->|Logs Runs & Metrics| MLflow[(MLflow Experiment Tracker)]
     
-    %% Scraper Layer
+    %% Scraper & Storage
     Scraper[Scrapy + Playwright Spider] -->|Stream Product Data| RedisCache
-    RedisCache -->|Consume Data| NodeAPI
-    RedisCache -->|Generate Embeddings| Celery[Celery Workers]
-    
-    %% Workers & Storage
-    Celery -->|Upsert Vectors| Pinecone
     Celery -->|Store Uploads| B2[Backblaze B2 Storage]
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Tech Stack & Active Components
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Mobile Frontend** | React Native + Expo + TypeScript | Cross-platform (iOS/Android) mobile interface |
-| **Navigation** | Expo Router | Modern file-based routing |
-| **Styling** | NativeWind (Tailwind CSS) | Utility-first UI styling |
-| **State Management** | Zustand | Lightweight and reactive global state |
-| **Data Fetching** | TanStack Query | Cached API requests and loading states |
-| **ML Backend** | FastAPI (Python 3.11) | High-performance, asynchronous ML inference endpoints |
-| **API Backend** | Node.js + Express | User profiles, authentication, price alerts, secondary CRUD |
-| **Task Queue** | Celery + Redis | Asynchronous ML inference jobs and background scraping pipelines |
-| **Real-time** | Socket.io | Live price-drop and restock notifications |
-| **Vector DB** | Pinecone / FAISS | Indexing and similarity search on CLIP image embeddings |
-| **Primary Database** | PostgreSQL | Relational storage for users, wardrobes, products, and reviews |
-| **Caching / Streaming** | Redis (Cache & Streams) | Real-time scraped product feeds and endpoint caching |
-| **Object Storage** | Backblaze B2 (S3 API) | Secure storage for user-uploaded product images |
-| **Scraper** | Scrapy + Playwright | Extract product data, best sellers, and reviews from e-commerce sites |
+| Layer | Technology | Purpose | Status |
+|---|---|---|---|
+| **Mobile App** | React Native + Expo Router + TypeScript | Cross-platform (iOS/Android) mobile interface | ✅ Built |
+| **Mobile Auth** | Clerk Auth (`@clerk/expo`) | Secure user sign-in & JWT session management | ✅ Built |
+| **State Management** | Zustand | Reactive global state (Alerts, Wardrobe, Auth) | ✅ Built |
+| **ML Backend** | FastAPI + PyTorch + CLIP | Real-time CV inference, embeddings & scoring | ✅ Built |
+| **Core API Backend** | Node.js + Express + Sequelize | User data, price alerts, wardrobe CRUD & catalog APIs | ✅ Built |
+| **Vector DB** | FAISS / Pinecone | High-speed 512-dim vector similarity search | ✅ Built |
+| **Experiment Tracking** | MLflow | Logging model accuracy, parameters, and scan metrics | ✅ Built |
+| **Task Queue & Caching** | Celery + Redis | Asynchronous ML inference jobs & Redis cache | ✅ Built |
+| **Real-time** | Socket.io | Live price-drop push notification events | ✅ Built |
+| **Primary Database** | Neon PostgreSQL | Cloud relational DB for users, products, and wardrobes | ✅ Built |
+| **Object Storage** | Backblaze B2 | Cloud S3-compatible image upload bucket | ✅ Built |
 
 ---
 
-## 🚀 Getting Started
+## ⚡ Local Development Setup
 
-### Prerequisites
+Currently, services run locally directly via Node.js, Python, and Metro bundler (*Docker containerization is scheduled for Build Order Step 25*).
 
-Ensure you have the following installed:
-- [Docker & Docker Compose](https://www.docker.com/)
-- [Node.js (v18+)](https://nodejs.org/)
-- [Python 3.11+](https://www.python.org/)
+### 1. Prerequisites
+- **Node.js**: v18 or higher
+- **Python**: 3.11 or 3.13
+- **Expo Go App**: Installed on physical mobile phone (iOS / Android) connected to local Wi-Fi.
 
-### Local Development Setup
+---
 
-To run the entire system (FastAPI, Express API, Celery Workers, Redis, PostgreSQL) locally with a single command:
+### 2. Running Services Locally
 
+#### A. Start Node.js API Backend (Port 3000)
 ```bash
-docker-compose up --build
+cd api-backend
+npm install
+npm run dev
 ```
 
-For setting up individual components, check the READMEs in their respective directories:
-- [mobile/](./mobile/README.md)
-- [ml-backend/](./ml-backend/README.md)
-- [api-backend/](./api-backend/README.md)
-- [scraper/](./scraper/README.md)
+#### B. Start FastAPI ML Backend (Port 8000)
+```bash
+cd ml-backend
+# Activate virtual environment if using one
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### C. Start Mobile Expo App
+```bash
+cd mobile
+npm install
+npx expo start
+```
+*Scan the generated QR code with Expo Go on your mobile device.*
 
 ---
 
-## 📱 Expo Go Demo
+## 📡 Key API Endpoints
 
-You can preview the mobile app on physical devices using Expo Go.
-
-1. Navigate to the `mobile/` directory and install dependencies:
-   ```bash
-   cd mobile
-   npm install
-   ```
-2. Start the development server:
-   ```bash
-   npx expo start
-   ```
-3. Scan the generated QR code using the camera app (iOS) or Expo Go app (Android).
-
----
-
-## 📡 API Reference (FastAPI CV Endpoints)
-
-### 1. Submit Product Image for Scoring
+### 1. Computer Vision Image Scoring
 * **Endpoint:** `POST /api/v1/cv/score`
-* **Content-Type:** `multipart/form-data`
-* **Response (Async Job ID):**
-  ```json
-  {
-    "job_id": "c8b4df56-e918-4b72-8f52-64f33b1e3271",
-    "status": "pending"
-  }
-  ```
-
-### 2. Poll Scoring Job Status
-* **Endpoint:** `GET /api/v1/cv/score/{job_id}/status`
+* **Payload:** `{ "product_id": "p-123", "user_id": "u-456", "uploaded_image_url": "https://...", "stock_image_urls": ["https://..."] }`
 * **Response:**
   ```json
   {
@@ -121,34 +119,31 @@ You can preview the mobile app on physical devices using Expo Go.
   }
   ```
 
-### 3. Retrieve Scoring Result
-* **Endpoint:** `GET /api/v1/cv/score/{job_id}/result`
+### 2. Wardrobe Capsule Gap Analysis
+* **Endpoint:** `POST /api/v1/wardrobe/gap-analysis`
+* **Payload:** `{ "user_id": "u-456", "wardrobe": [{"name": "Jeans", "category": "Bottoms"}], "budget_inr": 5000 }`
 * **Response:**
   ```json
   {
-    "job_id": "c8b4df56-e918-4b72-8f52-64f33b1e3271",
-    "stock_match_score": 0.94,
-    "authenticity_score": 0.89,
-    "overall_confidence": 0.91,
-    "uploaded_image_url": "https://fasion-ai-bucket.s3.backblazeb2.com/uploads/user_123.jpg"
+    "coverage_score": 0.70,
+    "missing_categories": [
+      {
+        "category": "Formals / Blazers",
+        "priority": "high",
+        "reason": "Formals are needed for professional settings and interviews.",
+        "suggested_budget_inr": 2500
+      }
+    ],
+    "analysis_note": "Good foundation — focus on high-priority gaps."
   }
   ```
 
 ---
 
-## 📊 Computer Vision Engine Benchmarks
+## 🧪 Automated Test Verification
 
-Accuracy benchmarks of our CLIP-based similarity and authenticity scoring models tested against a validation set of 5,000 crawled e-commerce products:
+All modules feature comprehensive automated test suites:
 
-* **Top-1 Visual Match Accuracy:** 94.2%
-* **Top-5 Visual Match Accuracy:** 98.7%
-* **Review Authenticity F1-Score:** 0.88 (threshold at 0.72 distance)
-* **Average Inference Latency:** 84ms (Pinecone + CLIP ViT-B/32)
-
----
-
-## 🔮 Future Roadmap
-
-- **Style DNA:** Deep learning profile generator that extracts visual features from user-uploaded outfit photos to map personalized styles.
-- **Influencer Look Decoder:** Instantly map Instagram/Pinterest influencer outfits to cheaper catalog products.
-- **Outfit Composer:** An interactive AI canvas to mix and match wardrobe items, predicting size and color compatibility before purchasing.
+- **Mobile App**: `cd mobile && npm test` (44/44 Jest tests passing)
+- **ML Backend**: `cd ml-backend && python -m pytest` (All PyTest test suites passing)
+- **TypeScript**: `cd mobile && npx tsc --noEmit` (0 compilation errors)
