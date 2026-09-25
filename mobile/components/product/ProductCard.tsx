@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { Product } from '../../types';
+import ExplanationAccordion from '../shared/ExplanationAccordion';
+import { useAuthStore } from '../../store/authStore';
 
 interface ProductCardProps {
   product: Product;
@@ -22,6 +24,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ product, onPress }: ProductCardProps) {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
 
   const handlePress = () => {
     if (onPress) {
@@ -57,6 +60,16 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
         </Text>
         <Text style={styles.price}>₹{product.price_inr?.toLocaleString('en-IN')}</Text>
       </View>
+
+      {/* RAG Explanation — lazy, only fetches on first tap */}
+      {user && (
+        <ExplanationAccordion
+          title="Why this suits you"
+          id={String(product.id)}
+          type="recommendation"
+          userId={user.id}
+        />
+      )}
     </TouchableOpacity>
   );
 }

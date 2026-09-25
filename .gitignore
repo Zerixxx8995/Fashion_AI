@@ -30,8 +30,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Project Plan (Specifically requested by user to be ignored)
+# Project Plan & Feature Specs (Specifically requested by user to be ignored)
 fashion_app_project_plan.md
+fashion_app_rag_feature.md
 
 # Log files
 *.log

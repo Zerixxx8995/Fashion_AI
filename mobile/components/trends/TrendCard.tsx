@@ -10,6 +10,7 @@ import { StyleSheet, Text, View, Image, TouchableOpacity } from 'react-native';
 import type { TrendItem } from '../../types';
 import LifecycleBadge from './LifecycleBadge';
 import { PLATFORMS } from '../../constants/platforms';
+import ExplanationAccordion from '../shared/ExplanationAccordion';
 
 interface TrendCardProps {
   trend: TrendItem;
@@ -91,6 +92,13 @@ export default function TrendCard({ trend, onPress }: TrendCardProps) {
           </View>
         </View>
       </View>
+
+      {/* RAG Explanation — lazy, only fetches on first tap */}
+      <ExplanationAccordion
+        title="Why is this trending?"
+        id={String(trend.id)}
+        type="trend"
+      />
     </TouchableOpacity>
   );
 }
