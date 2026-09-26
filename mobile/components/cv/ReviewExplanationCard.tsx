@@ -104,6 +104,7 @@ export default function ReviewExplanationCard({
 
   const handlePress = () => {
     if (!hasTapped) setHasTapped(true);
+    if (error) retry();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded((prev) => !prev);
   };
@@ -171,7 +172,7 @@ export default function ReviewExplanationCard({
               ) : null}
 
               {/* Phrases found */}
-              {explanation.suspicious_phrases.length > 0 && (
+              {Array.isArray(explanation.suspicious_phrases) && explanation.suspicious_phrases.length > 0 && (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>
                     {isFlagged ? 'Suspicious phrases found' : 'Authenticity phrases analyzed'}
@@ -185,7 +186,7 @@ export default function ReviewExplanationCard({
               )}
 
               {/* Pattern matches */}
-              {explanation.pattern_matches.length > 0 && (
+              {Array.isArray(explanation.pattern_matches) && explanation.pattern_matches.length > 0 && (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>
                     {isFlagged

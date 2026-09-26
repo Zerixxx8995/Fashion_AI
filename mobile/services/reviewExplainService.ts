@@ -9,16 +9,14 @@
  *   - Never caches here — caching is Redis-side (48h TTL).
  */
 
-import type { AxiosInstance } from 'axios';
-
-// ---------------------------------------------------------------------------
-// Response type — mirrors ReviewAuthenticityExplanation Pydantic schema
-// ---------------------------------------------------------------------------
+export type MlClient = {
+  get<T>(path: string, opts?: object): Promise<T>;
+};
 
 export interface ReviewAuthenticityExplanation {
   review_id: string;
-  overall_verdict: 'Likely fake' | 'Possibly fake' | 'Inconclusive';
-  confidence_score: number;           // 0.0 – 1.0
+  overall_verdict: string;
+  confidence_score: number;
   suspicious_phrases: string[];
   image_mismatch_summary: string;
   pattern_matches: string[];
@@ -26,23 +24,11 @@ export interface ReviewAuthenticityExplanation {
   cached: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Service call
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch the authenticity explanation for a flagged review.
- *
- * @param mlClient  Authenticated ML backend Axios instance.
- * @param reviewId  UUID of the flagged Review.
- * @returns         ReviewAuthenticityExplanation or throws on error.
- */
 export async function getReviewExplanation(
-  mlClient: AxiosInstance,
+  mlClient: MlClient,
   reviewId: string,
 ): Promise<ReviewAuthenticityExplanation> {
-  const response = await mlClient.get<ReviewAuthenticityExplanation>(
+  return mlClient.get<ReviewAuthenticityExplanation>(
     `/reviews/${encodeURIComponent(reviewId)}/explain`,
   );
-  return response.data;
 }

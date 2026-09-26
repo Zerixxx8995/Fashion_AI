@@ -12,7 +12,7 @@
  *   });
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useHttpClients } from '../services/httpClient';
 import {
   getReviewExplanation,
@@ -48,30 +48,44 @@ export function useReviewExplanation({
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  const fetchExplanation = useCallback(async () => {
-    if (!reviewId || !enabled) return;
-    // Already loaded — don't re-fetch (Redis handles staleness)
-    if (explanation !== null) return;
+  const isFetchingRef = useRef(false);
 
+  useEffect(() => {
+    if (!reviewId || !enabled) return;
+    if (explanation !== null) return;
+    if (isFetchingRef.current) return;
+
+    let isMounted = true;
+    isFetchingRef.current = true;
     setLoading(true);
     setError(null);
 
-    try {
-      const { mlClient } = await getClients();
-      const data = await getReviewExplanation(mlClient, reviewId);
-      setExplanation(data);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to load explanation';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [reviewId, enabled, explanation, retryCount, getClients]);
+    (async () => {
+      try {
+        const { mlClient } = await getClients();
+        const data = await getReviewExplanation(mlClient, reviewId);
+        if (isMounted) {
+          setExplanation(data);
+          setError(null);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message =
+            err instanceof Error ? err.message : 'Failed to load explanation';
+          setError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+        isFetchingRef.current = false;
+      }
+    })();
 
-  useEffect(() => {
-    fetchExplanation();
-  }, [fetchExplanation]);
+    return () => {
+      isMounted = false;
+    };
+  }, [reviewId, enabled, retryCount]);
 
   const retry = useCallback(() => {
     setExplanation(null);
