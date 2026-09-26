@@ -36,13 +36,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 interface ReviewExplanationCardProps {
-  /** UUID of the flagged review */
+  /** UUID of the review */
   reviewId: string;
-  /**
-   * Guard: only renders when true.
-   * Spec constraint — NEVER show this component for non-flagged reviews.
-   */
-  isFlaggedFake: boolean;
+  /** Whether the review is flagged as fake (defaults to true if flagged, false if clean) */
+  isFlaggedFake?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,9 +47,11 @@ interface ReviewExplanationCardProps {
 // ---------------------------------------------------------------------------
 
 const VERDICT_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  'Likely fake':    { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444', border: '#EF444440' },
-  'Possibly fake':  { bg: 'rgba(245,158,11,0.12)', text: '#F59E0B', border: '#F59E0B40' },
-  'Inconclusive':   { bg: 'rgba(107,114,128,0.12)',text: '#9CA3AF', border: '#9CA3AF40' },
+  'Verified authentic': { bg: 'rgba(16,185,129,0.12)', text: '#10B981', border: '#10B98140' },
+  'Likely authentic':   { bg: 'rgba(16,185,129,0.12)', text: '#10B981', border: '#10B98140' },
+  'Likely fake':        { bg: 'rgba(239,68,68,0.12)',  text: '#EF4444', border: '#EF444440' },
+  'Possibly fake':      { bg: 'rgba(245,158,11,0.12)', text: '#F59E0B', border: '#F59E0B40' },
+  'Inconclusive':       { bg: 'rgba(107,114,128,0.12)',text: '#9CA3AF', border: '#9CA3AF40' },
 };
 
 function VerdictBadge({ verdict }: { verdict: string }) {
@@ -75,10 +74,14 @@ function VerdictBadge({ verdict }: { verdict: string }) {
 // Phrase chip
 // ---------------------------------------------------------------------------
 
-function PhraseChip({ text }: { text: string }) {
+function PhraseChip({ text, isFlagged = true }: { text: string; isFlagged?: boolean }) {
+  const chipBg = isFlagged ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)';
+  const chipBorder = isFlagged ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)';
+  const chipText = isFlagged ? '#EF4444' : '#10B981';
+
   return (
-    <View style={styles.phraseChip}>
-      <Text style={styles.phraseChipText}>"{text}"</Text>
+    <View style={[styles.phraseChip, { backgroundColor: chipBg, borderColor: chipBorder }]}>
+      <Text style={[styles.phraseChipText, { color: chipText }]}>"{text}"</Text>
     </View>
   );
 }
@@ -89,11 +92,8 @@ function PhraseChip({ text }: { text: string }) {
 
 export default function ReviewExplanationCard({
   reviewId,
-  isFlaggedFake,
+  isFlaggedFake = false,
 }: ReviewExplanationCardProps) {
-  // Spec constraint: NEVER render for non-flagged reviews
-  if (!isFlaggedFake) return null;
-
   const [expanded, setExpanded] = useState(false);
   const [hasTapped, setHasTapped] = useState(false);
 
@@ -108,6 +108,11 @@ export default function ReviewExplanationCard({
     setExpanded((prev) => !prev);
   };
 
+  const isFlagged = isFlaggedFake;
+  const triggerColor = isFlagged ? '#EF4444' : '#10B981';
+  const triggerIcon = isFlagged ? '⚠️' : '🛡️';
+  const triggerTitle = isFlagged ? 'Why was this flagged?' : 'Why is this listing verified?';
+
   return (
     <View style={styles.container}>
       {/* Divider */}
@@ -119,14 +124,14 @@ export default function ReviewExplanationCard({
         onPress={handlePress}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel="Why was this flagged?"
+        accessibilityLabel={triggerTitle}
         accessibilityState={{ expanded }}
       >
         <View style={styles.triggerLeft}>
-          <Text style={styles.warningIcon}>⚠️</Text>
-          <Text style={styles.triggerText}>Why was this flagged?</Text>
+          <Text style={styles.warningIcon}>{triggerIcon}</Text>
+          <Text style={[styles.triggerText, { color: triggerColor }]}>{triggerTitle}</Text>
         </View>
-        <Text style={styles.chevron}>{expanded ? '▴' : '▾'}</Text>
+        <Text style={[styles.chevron, { color: triggerColor }]}>{expanded ? '▴' : '▾'}</Text>
       </TouchableOpacity>
 
       {/* Expanded content */}
@@ -135,7 +140,7 @@ export default function ReviewExplanationCard({
           {/* Loading state */}
           {loading && (
             <View style={styles.loadingRow}>
-              <ActivityIndicator size="small" color="#EF4444" />
+              <ActivityIndicator size="small" color={triggerColor} />
               <Text style={styles.loadingText}>Analysing review patterns…</Text>
             </View>
           )}
@@ -156,7 +161,7 @@ export default function ReviewExplanationCard({
                 <VerdictBadge verdict={explanation.overall_verdict} />
               </View>
 
-              {/* Image mismatch */}
+              {/* Image mismatch / match summary */}
               {explanation.image_mismatch_summary ? (
                 <View style={styles.section}>
                   <Text style={styles.mismatchText}>
@@ -165,13 +170,15 @@ export default function ReviewExplanationCard({
                 </View>
               ) : null}
 
-              {/* Suspicious phrases */}
+              {/* Phrases found */}
               {explanation.suspicious_phrases.length > 0 && (
                 <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Suspicious phrases found</Text>
+                  <Text style={styles.sectionLabel}>
+                    {isFlagged ? 'Suspicious phrases found' : 'Authenticity phrases analyzed'}
+                  </Text>
                   <View style={styles.chipsRow}>
                     {explanation.suspicious_phrases.map((phrase, idx) => (
-                      <PhraseChip key={idx} text={phrase} />
+                      <PhraseChip key={idx} text={phrase} isFlagged={isFlagged} />
                     ))}
                   </View>
                 </View>
@@ -181,8 +188,9 @@ export default function ReviewExplanationCard({
               {explanation.pattern_matches.length > 0 && (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>
-                    Matches {explanation.pattern_matches.length} known fake review pattern
-                    {explanation.pattern_matches.length !== 1 ? 's' : ''}.
+                    {isFlagged
+                      ? `Matches ${explanation.pattern_matches.length} known fake review pattern${explanation.pattern_matches.length !== 1 ? 's' : ''}.`
+                      : `Matches ${explanation.pattern_matches.length} positive trust indicator${explanation.pattern_matches.length !== 1 ? 's' : ''}.`}
                   </Text>
                   {explanation.pattern_matches.map((match, idx) => (
                     <View key={idx} style={styles.bulletRow}>
@@ -196,14 +204,14 @@ export default function ReviewExplanationCard({
               {/* Recommendation */}
               {explanation.recommendation ? (
                 <View style={styles.recommendationBox}>
-                  <Text style={styles.recommendationIcon}>💡</Text>
+                  <Text style={styles.recommendationIcon}>{isFlagged ? '💡' : '✨'}</Text>
                   <Text style={styles.recommendationText}>
                     {explanation.recommendation}
                   </Text>
                 </View>
               ) : null}
 
-              {/* AI generated label — spec constraint */}
+              {/* AI generated label */}
               <View style={styles.aiLabelRow}>
                 <View style={styles.aiDot} />
                 <Text style={styles.aiLabel}>AI generated</Text>

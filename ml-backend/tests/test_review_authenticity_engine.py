@@ -186,6 +186,35 @@ class TestReviewAuthenticityEngine:
         result = self._run_engine_with_llm_response([bad, bad])
         assert result.overall_verdict == "Inconclusive"
 
+    def test_authentic_review_explanation(self):
+        """Engine supports generating positive trust explanations for authentic reviews."""
+        from app.core import review_authenticity_engine
+        from app.core.review_authenticity_engine import generate_review_explanation
+
+        auth_json = json.dumps({
+            "overall_verdict": "Verified authentic",
+            "confidence_score": 0.95,
+            "suspicious_phrases": ["great fabric", "true to size"],
+            "image_mismatch_summary": "Reviewer photo matches stock photo perfectly.",
+            "pattern_matches": ["High verified buyer match", "Natural sentiment"],
+            "recommendation": "Safe purchase."
+        })
+
+        with patch.object(review_authenticity_engine, "_call_llm", return_value=auth_json), \
+             patch.object(review_authenticity_engine, "_get_llm_at_temp_01", return_value=MagicMock()):
+            result = generate_review_explanation(
+                review_text="Great fabric, true to size.",
+                stock_match_score=0.95,
+                product_name="Blue Kurta",
+                platform="myntra",
+                stock_image_url="https://example.com/stock.jpg",
+                historical_fake_reviews=[],
+                is_flagged_fake=False,
+            )
+
+        assert result.overall_verdict == "Verified authentic"
+        assert "great fabric" in result.suspicious_phrases
+
 
 # ---------------------------------------------------------------------------
 # API integration tests — GET /reviews/{review_id}/explain

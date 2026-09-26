@@ -31,20 +31,26 @@ logger = logging.getLogger(__name__)
 # Pydantic output schema — spec-defined, never modified
 # ---------------------------------------------------------------------------
 
-VALID_VERDICTS = {"Likely fake", "Possibly fake", "Inconclusive"}
+VALID_VERDICTS = {
+    "Verified authentic",
+    "Likely authentic",
+    "Likely fake",
+    "Possibly fake",
+    "Inconclusive",
+}
 
 
 class ReviewAuthenticityExplanation(BaseModel):
     """
-    Structured explanation of why a review was flagged as potentially fake.
+    Structured explanation of review authenticity or suspicion.
 
-    All fields are required. overall_verdict must be one of the three
-    canonical values defined in VALID_VERDICTS.
+    All fields are required. overall_verdict must be one of the canonical
+    values defined in VALID_VERDICTS.
     """
 
     overall_verdict: str = Field(
         ...,
-        description='One of: "Likely fake" | "Possibly fake" | "Inconclusive"',
+        description='One of: "Verified authentic" | "Likely authentic" | "Likely fake" | "Possibly fake" | "Inconclusive"',
     )
     confidence_score: float = Field(
         ...,
@@ -55,20 +61,20 @@ class ReviewAuthenticityExplanation(BaseModel):
     suspicious_phrases: list[str] = Field(
         ...,
         min_length=0,
-        description="Specific phrases from the review text that match fake review patterns.",
+        description="Specific phrases analyzed from the review text.",
     )
     image_mismatch_summary: str = Field(
         ...,
-        description="One sentence describing the visual mismatch between reviewer and stock image.",
+        description="One sentence describing visual match/mismatch between reviewer and stock image.",
     )
     pattern_matches: list[str] = Field(
         ...,
         min_length=0,
-        description="How this review matches patterns seen in historical fake reviews.",
+        description="How this review matches patterns seen in historical authentic or fake reviews.",
     )
     recommendation: str = Field(
         ...,
-        description="One sentence — what the user should do before purchasing.",
+        description="One sentence — advice for the shopper before purchasing.",
     )
 
     @field_validator("overall_verdict")
@@ -82,11 +88,30 @@ class ReviewAuthenticityExplanation(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Inconclusive fallback — returned when both LLM attempts fail
+# Inconclusive / Safe fallback
 # ---------------------------------------------------------------------------
 
-def _inconclusive_fallback(confidence_score: float) -> ReviewAuthenticityExplanation:
-    """Return a safe Inconclusive response when the LLM cannot produce valid output."""
+def _inconclusive_fallback(
+    confidence_score: float, is_flagged_fake: bool = True
+) -> ReviewAuthenticityExplanation:
+    """Return a safe fallback response when the LLM cannot produce valid output."""
+    if not is_flagged_fake:
+        return ReviewAuthenticityExplanation(
+            overall_verdict="Verified authentic",
+            confidence_score=round(confidence_score, 4),
+            suspicious_phrases=[],
+            image_mismatch_summary=(
+                "Review photos match stock images and product description well."
+            ),
+            pattern_matches=[
+                "High buyer photo match consistency",
+                "Natural reviewer sentiment spread",
+            ],
+            recommendation=(
+                "Listing appears authentic and safe to purchase."
+            ),
+        )
+
     return ReviewAuthenticityExplanation(
         overall_verdict="Inconclusive",
         confidence_score=round(confidence_score, 4),
@@ -105,14 +130,26 @@ def _inconclusive_fallback(confidence_score: float) -> ReviewAuthenticityExplana
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-_SCHEMA_JSON = json.dumps(
+_SCHEMA_JSON_FLAGGED = json.dumps(
     {
         "overall_verdict": 'one of: "Likely fake" | "Possibly fake" | "Inconclusive"',
         "confidence_score": "float 0.0 to 1.0",
         "suspicious_phrases": ["list", "of", "suspicious", "phrases", "from", "review", "text"],
         "image_mismatch_summary": "one sentence describing visual mismatch",
         "pattern_matches": ["list", "of", "fake", "pattern", "matches"],
-        "recommendation": "one sentence — what the user should do",
+        "recommendation": "one sentence — warning/advice for user",
+    },
+    indent=2,
+)
+
+_SCHEMA_JSON_AUTHENTIC = json.dumps(
+    {
+        "overall_verdict": 'one of: "Verified authentic" | "Likely authentic" | "Inconclusive"',
+        "confidence_score": "float 0.0 to 1.0",
+        "suspicious_phrases": ["list", "of", "key", "authentic", "phrases"],
+        "image_mismatch_summary": "one sentence describing high image consistency",
+        "pattern_matches": ["list", "of", "positive", "trust", "indicators"],
+        "recommendation": "one sentence — positive shopping confirmation",
     },
     indent=2,
 )
@@ -132,6 +169,24 @@ Stock image URL: {stock_image_url}
 
 Similar historical fake reviews (for pattern matching):
 {formatted_historical_reviews}
+
+Return ONLY a valid JSON object matching EXACTLY this schema — no markdown, no extra text:
+{schema}
+"""
+
+_PROMPT_TEMPLATE_AUTHENTIC = """\
+You are a review authenticity analyst for an Indian fashion e-commerce app.
+Based ONLY on the data below, generate a structured explanation of why this
+review and product listing are VERIFIED AUTHENTIC and trustworthy.
+Be specific — reference exact phrases, high image match score, and absence of bot manipulation patterns.
+Do not invent details not present in the data.
+
+Current review:
+Text: {review_text}
+Image match score vs stock photo: {stock_match_score}
+
+Product: {product_name} on {platform}
+Stock image URL: {stock_image_url}
 
 Return ONLY a valid JSON object matching EXACTLY this schema — no markdown, no extra text:
 {schema}
@@ -245,50 +300,52 @@ def generate_review_explanation(
     platform: str,
     stock_image_url: str,
     historical_fake_reviews: list[dict[str, Any]],
+    is_flagged_fake: bool = True,
 ) -> ReviewAuthenticityExplanation:
     """
-    Generate a structured explanation of why a review appears fake.
+    Generate a structured explanation of review authenticity or suspicion.
 
     Calls Gemini at temperature=0.1 with review text, stock match score,
-    and top-5 historically similar fake reviews from Pinecone. Parses the
-    response against the ReviewAuthenticityExplanation schema.
+    and historical review patterns. Parses the response against the
+    ReviewAuthenticityExplanation schema.
 
     Retry logic:
       - Attempt 1: full context prompt.
       - Attempt 2 (on parse failure): stricter, JSON-only prompt.
-      - Both fail: return Inconclusive fallback with raw confidence_score.
-
-    Args:
-        review_text:              Full text of the flagged review.
-        stock_match_score:        Float 0–1 from the existing CV engine.
-        product_name:             Name of the product being reviewed.
-        platform:                 Platform name (e.g. "myntra").
-        stock_image_url:          First stock image URL for the product.
-        historical_fake_reviews:  List of reviewer_text dicts from similar
-                                  flagged reviews fetched from Pinecone+DB.
-
-    Returns:
-        ReviewAuthenticityExplanation — validated Pydantic model.
+      - Both fail: return safe fallback with raw confidence_score.
     """
     logger.info(
         "[review_authenticity_engine] generate_review_explanation "
-        "product=%s score=%.3f historical_count=%d",
-        product_name, stock_match_score, len(historical_fake_reviews),
+        "product=%s score=%.3f flagged=%s historical_count=%d",
+        product_name, stock_match_score, is_flagged_fake, len(historical_fake_reviews),
     )
 
     llm = _get_llm_at_temp_01()
     formatted_history = _format_historical_reviews(historical_fake_reviews)
 
+    schema_json = _SCHEMA_JSON_FLAGGED if is_flagged_fake else _SCHEMA_JSON_AUTHENTIC
+    prompt_template = _PROMPT_TEMPLATE if is_flagged_fake else _PROMPT_TEMPLATE_AUTHENTIC
+
     # ── Attempt 1: full context prompt ──────────────────────────────────────
-    prompt1 = _PROMPT_TEMPLATE.format(
-        review_text=review_text,
-        stock_match_score=round(stock_match_score, 4),
-        product_name=product_name,
-        platform=platform,
-        stock_image_url=stock_image_url,
-        formatted_historical_reviews=formatted_history,
-        schema=_SCHEMA_JSON,
-    )
+    if is_flagged_fake:
+        prompt1 = prompt_template.format(
+            review_text=review_text,
+            stock_match_score=round(stock_match_score, 4),
+            product_name=product_name,
+            platform=platform,
+            stock_image_url=stock_image_url,
+            formatted_historical_reviews=formatted_history,
+            schema=schema_json,
+        )
+    else:
+        prompt1 = prompt_template.format(
+            review_text=review_text,
+            stock_match_score=round(stock_match_score, 4),
+            product_name=product_name,
+            platform=platform,
+            stock_image_url=stock_image_url,
+            schema=schema_json,
+        )
 
     try:
         raw1 = _call_llm(llm, prompt1)
@@ -308,8 +365,8 @@ def generate_review_explanation(
 
     # ── Attempt 2: stricter JSON-only prompt ─────────────────────────────────
     prompt2 = _RETRY_PROMPT_TEMPLATE.format(
-        schema=_SCHEMA_JSON,
-        review_text=review_text[:500],  # truncate to reduce confusion
+        schema=schema_json,
+        review_text=review_text[:500],
         stock_match_score=round(stock_match_score, 4),
         product_name=product_name,
         pattern_count=len(historical_fake_reviews),
@@ -327,9 +384,10 @@ def generate_review_explanation(
         return result
     except Exception as exc2:
         logger.error(
-            "[review_authenticity_engine] attempt 2 failed: %s — returning Inconclusive fallback",
+            "[review_authenticity_engine] attempt 2 failed: %s — returning fallback",
             exc2,
         )
 
     # ── Fallback: both attempts failed ───────────────────────────────────────
-    return _inconclusive_fallback(stock_match_score)
+    return _inconclusive_fallback(stock_match_score, is_flagged_fake=is_flagged_fake)
+

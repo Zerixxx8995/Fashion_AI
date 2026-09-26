@@ -241,10 +241,8 @@ def get_review_explanation(
     review = db.scalar(select(Review).where(Review.id == review_id))
     if review is None:
         raise KeyError(f"Review with id={review_id!r} not found")
-    if not review.is_flagged_fake:
-        raise ValueError(
-            f"Review {review_id!r} is not flagged as fake — explanation not applicable"
-        )
+
+    is_flagged_fake = bool(review.is_flagged_fake)
 
     # 3. Fetch the product for context
     product = db.scalar(select(Product).where(Product.id == review.product_id))
@@ -261,16 +259,18 @@ def get_review_explanation(
             stock_image_url = ""
 
     # 4. Retrieve similar historical fake reviews (Pinecone → DB fallback)
-    historical_reviews = _fetch_similar_fake_reviews(
-        db,
-        review_id=review_id,
-        product_id=review.product_id,
-    )
+    historical_reviews = []
+    if is_flagged_fake:
+        historical_reviews = _fetch_similar_fake_reviews(
+            db,
+            review_id=review_id,
+            product_id=review.product_id,
+        )
 
     # 5. Generate explanation via RAG engine
     logger.info(
-        "[review_explain_service] generating explanation review_id=%s product=%s",
-        review_id, product_name,
+        "[review_explain_service] generating explanation review_id=%s product=%s flagged=%s",
+        review_id, product_name, is_flagged_fake,
     )
     explanation: ReviewAuthenticityExplanation = generate_review_explanation(
         review_text=review.reviewer_text or "(no review text)",
@@ -279,6 +279,7 @@ def get_review_explanation(
         platform=platform,
         stock_image_url=stock_image_url,
         historical_fake_reviews=historical_reviews,
+        is_flagged_fake=is_flagged_fake,
     )
 
     # 6. Build response dict

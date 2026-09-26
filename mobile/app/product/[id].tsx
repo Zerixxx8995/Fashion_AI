@@ -238,14 +238,11 @@ export default function ProductDetailScreen() {
         {/* ── Trust Score & Authenticity Badge ─────────────────────────── */}
         <TrustScoreBadge score={0.86} label="Verified Authentic Listing (86% Match)" />
 
-        {/* ── Feature 3: Review Authenticity Explanation ───────────────── */}
-        {/* Only renders when isFlaggedFake is true — spec constraint */}
-        {flaggedReviewId && (
-          <ReviewExplanationCard
-            reviewId={flaggedReviewId}
-            isFlaggedFake={isFlaggedFake}
-          />
-        )}
+        {/* ── Feature 3: Review & Trust Authenticity Explanation ───────── */}
+        <ReviewExplanationCard
+          reviewId={flaggedReviewId || String(product.id)}
+          isFlaggedFake={isFlaggedFake}
+        />
 
         {/* ── Quick Actions ────────────────────────────────────────────── */}
         <View style={styles.actionButtonsRow}>
