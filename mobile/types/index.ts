@@ -254,3 +254,26 @@ export interface RequestOptions {
   /** Milliseconds before the request is aborted. Default: 15000 */
   timeoutMs?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Feature 3 — Review Authenticity Explanation
+// ---------------------------------------------------------------------------
+
+/** Overall authenticity verdict — one of three canonical values. */
+export type AuthenticityVerdict = 'Likely fake' | 'Possibly fake' | 'Inconclusive';
+
+/**
+ * Mirrors the ReviewAuthenticityExplanation Pydantic schema.
+ * Returned by GET /api/v1/reviews/{review_id}/explain.
+ */
+export interface ReviewAuthenticityExplanation {
+  review_id: string;
+  overall_verdict: AuthenticityVerdict;
+  confidence_score: number;           // 0.0 – 1.0
+  suspicious_phrases: string[];
+  image_mismatch_summary: string;
+  pattern_matches: string[];
+  recommendation: string;
+  cached: boolean;
+}
+

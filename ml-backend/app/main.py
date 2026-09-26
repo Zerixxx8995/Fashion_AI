@@ -32,7 +32,7 @@ from app.middleware.error_handler import register_error_handlers
 from app.middleware.rate_limiter import RateLimiterMiddleware
 from app.middleware.request_logger import RequestLoggerMiddleware
 from app.middleware.auth_middleware import ClerkAuthMiddleware
-from app.routers import cv, health, trends, wardrobe, budget, recommendations, explanations, agent
+from app.routers import cv, health, trends, wardrobe, budget, recommendations, explanations, agent, review_explain
 from app.db.database import Base, engine
 import app.db.models  # noqa: F401
 
@@ -102,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(recommendations.router, prefix="/api/v1")
     app.include_router(explanations.router, prefix="/api/v1")
     app.include_router(agent.router, prefix="/api/v1")
+    app.include_router(review_explain.router, prefix="/api/v1")
 
     logger.info("FastAPI app created with all middleware registered")
     return app

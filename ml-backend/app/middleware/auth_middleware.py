@@ -48,6 +48,7 @@ _PUBLIC_PREFIXES: tuple[str, ...] = (
     "/api/v1/cv",               # Computer Vision scan engine — open for guest & authenticated users
     "/api/v1/explanations",     # RAG explanations — read-only
     "/api/v1/agent",            # Conversational shopping agent — open for guest & authenticated users
+    "/api/v1/reviews",          # Review authenticity explain — read-only, public
     "/docs",
     "/redoc",
 )
