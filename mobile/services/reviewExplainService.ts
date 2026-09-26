@@ -42,7 +42,7 @@ export async function getReviewExplanation(
   reviewId: string,
 ): Promise<ReviewAuthenticityExplanation> {
   const response = await mlClient.get<ReviewAuthenticityExplanation>(
-    `/api/v1/reviews/${encodeURIComponent(reviewId)}/explain`,
+    `/reviews/${encodeURIComponent(reviewId)}/explain`,
   );
   return response.data;
 }
