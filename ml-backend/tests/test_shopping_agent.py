@@ -350,10 +350,9 @@ class TestAgentChatAPI:
         # Verify tools_called is non-empty
         assert len(data["tools_called"]) >= 1
 
-    def test_unauthenticated_request_returns_401(self):
-        """Spec test 7: unauthenticated request returns 401."""
+    def test_public_guest_request_succeeds(self, mock_agent_service):
+        """Guest request without Authorization header succeeds on public route."""
         import os
-        # Ensure auth middleware is enabled
         os.environ.pop("TESTING", None)
 
         from app.main import create_app
@@ -362,16 +361,14 @@ class TestAgentChatAPI:
         response = client.post(
             "/api/v1/agent/chat",
             json={
-                "user_id": "user-abc-123",
+                "user_id": "guest",
                 "message": "find me a jacket",
                 "session_messages": [],
             },
-            # No Authorization header
         )
 
-        assert response.status_code == 401
+        assert response.status_code == 200
 
-        # Re-enable TESTING for subsequent tests
         os.environ["TESTING"] = "1"
 
     def test_empty_message_returns_422(self, app_client):

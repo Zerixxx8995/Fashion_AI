@@ -67,7 +67,7 @@ class LLMClient:
 
         from langchain_google_genai import ChatGoogleGenerativeAI  # type: ignore[import]
 
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
         self._llm = ChatGoogleGenerativeAI(
             model=self.model_name,
             temperature=0.3,  # spec constraint — never higher for this feature
@@ -95,10 +95,9 @@ class LLMClient:
 
         fallback_models = list(dict.fromkeys([
             self.model_name,
+            "gemini-3.5-flash-lite",
             "gemini-3.8-flash",
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
+            "gemini-3.6-flash",
         ]))
 
         last_exc: Optional[Exception] = None

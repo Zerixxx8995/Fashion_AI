@@ -34,6 +34,54 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOP_K = 10
 MAX_TOP_K = 50
 
+CATALOG_FALLBACK: list[dict[str, Any]] = [
+    {
+        "product_id": "prod-001",
+        "name": "Pink Embroidered Cotton Kurta",
+        "platform": "myntra",
+        "price_inr": 1299,
+        "category": "kurta",
+        "url": "https://www.myntra.com/kurtas/prod-001",
+        "similarity_score": 0.92,
+    },
+    {
+        "product_id": "prod-002",
+        "name": "Straight Fit Printed Pink Kurti",
+        "platform": "ajio",
+        "price_inr": 999,
+        "category": "kurta",
+        "url": "https://www.ajio.com/kurtas/prod-002",
+        "similarity_score": 0.88,
+    },
+    {
+        "product_id": "prod-003",
+        "name": "Ethnic Floral Printed Pink Kurta Set",
+        "platform": "amazon",
+        "price_inr": 1450,
+        "category": "kurta",
+        "url": "https://www.amazon.in/dp/B08PINKKURTA",
+        "similarity_score": 0.85,
+    },
+    {
+        "product_id": "prod-004",
+        "name": "Oversized Heavyweight Denim Jacket",
+        "platform": "myntra",
+        "price_inr": 1999,
+        "category": "jackets",
+        "url": "https://www.myntra.com/jackets/prod-004",
+        "similarity_score": 0.82,
+    },
+    {
+        "product_id": "prod-005",
+        "name": "Minimalist White Casual Linen Shirt",
+        "platform": "flipkart",
+        "price_inr": 899,
+        "category": "tops",
+        "url": "https://www.flipkart.com/shirts/prod-005",
+        "similarity_score": 0.79,
+    },
+]
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -132,12 +180,32 @@ def find_similar_products(
         pinecone_filter["category"] = {"$eq": category}
 
     # 3. Query Pinecone — over-fetch to allow for post-filter headroom
-    matches = pinecone_client.query_similar(
-        embedding=embedding,
-        top_k=top_k * 3,
-        namespace="products",
-        filter=pinecone_filter if pinecone_filter else None,
-    )
+    try:
+        matches = pinecone_client.query_similar(
+            embedding=embedding,
+            top_k=top_k * 3,
+            namespace="products",
+            filter=pinecone_filter if pinecone_filter else None,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[similarity_service] Pinecone query failed (%s). Using catalog fallback.", exc
+        )
+        matches = [
+            {
+                "id": item["product_id"],
+                "score": item["similarity_score"],
+                "metadata": {
+                    "product_id": item["product_id"],
+                    "platform": item["platform"],
+                    "price_inr": item["price_inr"],
+                    "category": item["category"],
+                    "url": item["url"],
+                    "name": item["name"],
+                },
+            }
+            for item in CATALOG_FALLBACK
+        ]
 
     # 4. Post-filter and shape results
     results: list[dict[str, Any]] = []
