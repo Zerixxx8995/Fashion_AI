@@ -57,7 +57,7 @@ export default function ExplanationAccordion({
   const [hasTapped, setHasTapped] = useState(false);
 
   // Only fetch when the user has tapped — never on mount
-  const { explanation, loading, error } = useExplanation({
+  const { explanation, loading, error, retry } = useExplanation({
     id,
     type,
     userId,
@@ -101,9 +101,11 @@ export default function ExplanationAccordion({
           )}
 
           {!loading && error && (
-            <Text style={styles.errorText}>
-              Could not load explanation. Tap to retry.
-            </Text>
+            <TouchableOpacity onPress={retry} activeOpacity={0.7}>
+              <Text style={styles.errorText}>
+                Could not load explanation. Tap to retry.
+              </Text>
+            </TouchableOpacity>
           )}
 
           {!loading && !error && explanation && (

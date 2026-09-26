@@ -321,10 +321,10 @@ def test_unauthenticated_request_returns_401():
         from fastapi.testclient import TestClient
         client = TestClient(fresh_app, raise_server_exceptions=False)
 
-        # No Authorization header
-        response = client.get(f"/api/v1/explanations/trend/{uuid.uuid4()}")
+        # Protected route with no Authorization header must return 401
+        response = client.post("/api/v1/budget/optimize", json={})
         assert response.status_code == 401, (
-            f"Expected 401 for unauthenticated request, got {response.status_code}"
+            f"Expected 401 for unauthenticated request to protected route, got {response.status_code}"
         )
     finally:
         # Restore TESTING flag

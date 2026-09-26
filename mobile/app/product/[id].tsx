@@ -32,6 +32,7 @@ import { createAlert } from '../../services/alertService';
 import TrustScoreBadge from '../../components/product/TrustScoreBadge';
 import PlatformLinkRow from '../../components/product/PlatformLinkRow';
 import SimilarProductsCarousel from '../../components/cv/SimilarProductsCarousel';
+import ExplanationAccordion from '../../components/shared/ExplanationAccordion';
 import type { Product, SimilarProduct } from '../../types';
 
 export default function ProductDetailScreen() {
@@ -216,6 +217,14 @@ export default function ProductDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* ── RAG Explanation — Why this suits you ──────────────────────── */}
+        <ExplanationAccordion
+          title="Why this suits you"
+          id={String(product.id)}
+          type="recommendation"
+          userId={user?.id || 'anonymous_user'}
+        />
 
         {/* ── Trust Score & Authenticity Badge ─────────────────────────── */}
         <TrustScoreBadge score={0.86} label="Verified Authentic Listing (86% Match)" />

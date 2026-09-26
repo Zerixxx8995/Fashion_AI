@@ -44,6 +44,7 @@ export interface UseExplanationResult {
   explanation: string | null;
   loading: boolean;
   error: string | null;
+  retry: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,17 +60,33 @@ export function useExplanation({
   const [explanation, setExplanation] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Track whether we've already fetched — explanation is cached in state after first fetch
   const hasFetched = useRef(false);
+  const isMounted = useRef(true);
 
   const { getClients } = useHttpClients();
+  const getClientsRef = useRef(getClients);
+  getClientsRef.current = getClients;
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const retry = () => {
+    hasFetched.current = false;
+    setError(null);
+    setRetryCount((c) => c + 1);
+  };
 
   useEffect(() => {
     // Only fetch once when enabled becomes true
     if (!enabled || hasFetched.current) return;
 
-    let cancelled = false;
     hasFetched.current = true;
 
     const fetchExplanation = async () => {
@@ -77,7 +94,7 @@ export function useExplanation({
       setError(null);
 
       try {
-        const { mlClient } = await getClients();
+        const { mlClient } = await getClientsRef.current();
 
         let text: string;
 
@@ -92,28 +109,24 @@ export function useExplanation({
           text = response.explanation;
         }
 
-        if (!cancelled) {
+        if (isMounted.current) {
           setExplanation(text);
         }
       } catch (err) {
-        if (!cancelled) {
+        if (isMounted.current) {
           const message =
             err instanceof Error ? err.message : 'Failed to load explanation';
           setError(message);
         }
       } finally {
-        if (!cancelled) {
+        if (isMounted.current) {
           setLoading(false);
         }
       }
     };
 
     fetchExplanation();
+  }, [enabled, id, type, userId, retryCount]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, id, type, userId, getClients]);
-
-  return { explanation, loading, error };
+  return { explanation, loading, error, retry };
 }

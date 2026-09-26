@@ -266,10 +266,29 @@ def get_recommendation_explanation(
                 "[explanation_service] invalid cached JSON for key=%s — regenerating", cache_key
             )
 
-    # 2. Cache miss — fetch product from DB
+    # 2. Cache miss — fetch product (or trend item) from DB
+    product_name = "Fashion Item"
+    brand = "Featured Collection"
+    category = "clothing"
+    price_inr = 0
+    resolved_product_id = product_id
+
     product = db.scalar(select(Product).where(Product.id == product_id))
-    if product is None:
-        raise KeyError(f"Product with id={product_id!r} not found")
+    if product is not None:
+        product_name = product.name
+        brand = product.brand or "Unknown Brand"
+        category = product.category or "clothing"
+        price_inr = product.price_inr or 0
+        resolved_product_id = str(product.id)
+    else:
+        # Check if product_id is a TrendItem
+        trend = db.scalar(select(TrendItem).where(TrendItem.id == product_id))
+        if trend is not None:
+            product_name = trend.name
+            category = trend.category or "clothing"
+            brand = "Trending Collection"
+            price_inr = 1999
+            resolved_product_id = str(trend.id)
 
     # 3. Fetch user profile from DB
     # user_id can be either the internal UUID or the clerk_id
@@ -278,66 +297,68 @@ def get_recommendation_explanation(
             (User.id == user_id) | (User.clerk_id == user_id)
         )
     )
-    if user is None:
-        raise KeyError(f"User with id={user_id!r} not found")
 
-    # 4. Fetch wardrobe items most similar to this product's category
-    wardrobe_stmt = (
-        select(WardrobeItem)
-        .where(WardrobeItem.user_id == user.id)
-        .where(WardrobeItem.category == product.category)
-        .limit(5)
-    )
-    wardrobe_items_db = list(db.scalars(wardrobe_stmt).all())
+    body_type = "versatile fit"
+    style_preferences = ["smart-casual", "trendy", "versatile"]
+    wardrobe_context: list[dict[str, Any]] = []
 
-    # Fallback: if no exact category match, get any wardrobe items
-    if not wardrobe_items_db:
+    if user is not None:
+        body_type = user.body_type or "versatile fit"
+        if user.style_preferences:
+            try:
+                style_preferences = json.loads(user.style_preferences)
+            except (json.JSONDecodeError, TypeError):
+                style_preferences = [user.style_preferences]
+
+        # Fetch wardrobe items most similar to this product's category
         wardrobe_stmt = (
             select(WardrobeItem)
             .where(WardrobeItem.user_id == user.id)
+            .where(WardrobeItem.category == category)
             .limit(5)
         )
         wardrobe_items_db = list(db.scalars(wardrobe_stmt).all())
 
-    wardrobe_context = [
-        {
-            "name": w.name,
-            "category": w.category or "clothing",
-            "color": w.color or "unknown",
-        }
-        for w in wardrobe_items_db
-    ]
+        # Fallback: if no exact category match, get any wardrobe items
+        if not wardrobe_items_db:
+            wardrobe_stmt = (
+                select(WardrobeItem)
+                .where(WardrobeItem.user_id == user.id)
+                .limit(5)
+            )
+            wardrobe_items_db = list(db.scalars(wardrobe_stmt).all())
 
-    # 5. Parse style preferences (stored as JSON string in DB)
-    style_preferences: list[str] = []
-    if user.style_preferences:
-        try:
-            style_preferences = json.loads(user.style_preferences)
-        except (json.JSONDecodeError, TypeError):
-            style_preferences = [user.style_preferences]
+        wardrobe_context = [
+            {
+                "name": w.name,
+                "category": w.category or "clothing",
+                "color": w.color or "unknown",
+            }
+            for w in wardrobe_items_db
+        ]
 
-    # 6. Generate explanation via RAG engine
+    # 4. Generate explanation via RAG engine
     explanation = rag_engine.generate_recommendation_explanation(
-        product_name=product.name,
-        brand=product.brand or "Unknown Brand",
-        category=product.category or "clothing",
-        price_inr=product.price_inr or 0,
-        body_type=user.body_type or "standard",
+        product_name=product_name,
+        brand=brand,
+        category=category,
+        price_inr=price_inr,
+        body_type=body_type,
         style_preferences=style_preferences,
         wardrobe_items=wardrobe_context,
     )
 
-    # 7. Build response
+    # 5. Build response
     generated_at = datetime.now(timezone.utc).isoformat()
     response = {
-        "product_id": str(product.id),
-        "product_name": product.name,
+        "product_id": resolved_product_id,
+        "product_name": product_name,
         "explanation": explanation,
         "cached": False,
         "generated_at": generated_at,
     }
 
-    # 8. Cache the result
+    # 6. Cache the result
     cacheable = {**response, "cached": False}
     _cache_set(cache_key, json.dumps(cacheable), _REC_TTL_SECONDS)
 
