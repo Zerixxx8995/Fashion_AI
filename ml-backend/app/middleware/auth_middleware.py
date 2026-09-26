@@ -47,6 +47,7 @@ _PUBLIC_PREFIXES: tuple[str, ...] = (
     "/api/v1/recommendations",  # Browse recommendations — read-only
     "/api/v1/cv",               # Computer Vision scan engine — open for guest & authenticated users
     "/api/v1/explanations",     # RAG explanations — read-only
+    # NOTE: /api/v1/agent is NOT listed here — requires JWT auth
     "/docs",
     "/redoc",
 )

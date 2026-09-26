@@ -11,9 +11,10 @@
  * Tabs (in order):
  *   1. index     — Trends feed (home)
  *   2. discover  — Style recommendations
- *   3. scan      — CV scan / upload
- *   4. wardrobe  — Wardrobe builder
- *   5. alerts    — Price drop alerts
+ *   3. chat      — Conversational shopping assistant (Feature 2)
+ *   4. scan      — CV scan / upload
+ *   5. wardrobe  — Wardrobe builder
+ *   6. alerts    — Price drop alerts
  */
 
 import React from 'react';
@@ -63,6 +64,13 @@ export default function TabsLayout() {
         options={{
           title: 'Discover',
           tabBarLabel: 'Discover',
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarLabel: 'Chat',
         }}
       />
       <Tabs.Screen
